@@ -789,6 +789,14 @@ void cqy_app::create_client() {
     }
 
     auto id = n->id;
+    auto node_info = get_nodeinfo(id);
+    n->rpc_client = cqy_rpc_client_pool::create(
+      std::format("{}:{}",node_info->ip, node_info->port),
+       {
+          .max_connection = std::thread::hardware_concurrency() 
+       },
+      *pool
+    );
     node_mq_spawn(id).start([id](async_simple::Try<void> tr){
       if (tr.hasError()) {
         try {
@@ -1007,23 +1015,14 @@ Lazy<void> cqy_app::node_mq_spawn(uint8_t id) {
   using namespace std::chrono_literals;
 
   auto n = node.get_mq_node(id);
-  auto node_info = get_nodeinfo(id);
   std::deque<std::string> msgs;
-
-  n->rpc_client = cqy_rpc_client_pool::create(
-    std::format("{}:{}",node_info->ip, node_info->port),
-     {
-        .max_connection = std::thread::hardware_concurrency() 
-     },
-    *pool
-  );
 
   size_t warn_size = 1024;
   while (!n->coro_queue.stop) {
       auto cur_size = co_await n->coro_queue.size();
       if(cur_size >= warn_size) {
         warn_size = warn_size * 2;
-        ELOG_WARN << std::format("node:{} queue size:{}", cur_size);
+        ELOG_WARN << std::format("node:{} queue size:{}", id, cur_size);
       } else {
         warn_size = std::clamp<size_t>(warn_size / 2, 1024, std::numeric_limits<size_t>::max());
       }
@@ -1053,6 +1052,7 @@ Lazy<void> cqy_app::node_mq_spawn(uint8_t id) {
       }
       msgs.clear();
   }
+  co_return;
 }
 
 Lazy<sptr<cqy_ctx_t>> cqy_app::pop_msg_ctx(ctx_queue_t& q) {
