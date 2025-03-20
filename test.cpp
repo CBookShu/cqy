@@ -1,8 +1,6 @@
 #include "ylt/coro_io/coro_io.hpp"
 #include <optional>
-#include <stop_token>
 #include <thread>
-#include <type_traits>
 #define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest.h>
 #include "cqy.h"
