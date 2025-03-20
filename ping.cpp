@@ -11,7 +11,7 @@ namespace cqy {
   struct node_ping : public cqy_ctx_t {
     virtual bool on_init(std::string_view param) override {
       ELOG_INFO << "param " << param;
-      app->ctx_mgr.resiger_name("ping", id);
+      app->ctx_mgr.register_name("ping", id);
 
       loop_send()
           .via(this->ex)
@@ -21,7 +21,7 @@ namespace cqy {
 
     virtual Lazy<void> on_msg(cqy_msg_t* msg) override {
       cqy_handle_t from = msg->from;
-      ELOG_INFO << std::format("from {}:{} msg:{}", from.nodeid, from.hid(), msg->buffer());
+      ELOG_INFO << std::format("from {:0x} msg:{}", from.id, msg->buffer());
 
       co_return;
     }
@@ -34,7 +34,7 @@ namespace cqy {
             //dispatch(1, "pong", 1, std::string("timer"));
         //}
 
-            auto result = co_await app->ctx_call_name<std::string_view>(1, "pong", "cqy::node_pong::rpc_pong", "hello world");
+            auto result = co_await app->ctx_call_name<std::string_view>("n1.pong", "cqy::node_pong::rpc_pong", "hello world");
             auto len = result.as<size_t>();
             ELOG_INFO << std::format("pong::rpc_pong res:{}", len);
     }

@@ -1,12 +1,8 @@
 #include "cqy.h"
-#include "iguana/json_reader.hpp"
 #include "ylt/easylog.hpp"
-#include "ylt/struct_pack.hpp"
 #include <cassert>
-#include <filesystem>
 #include <format>
 #include <string_view>
-#include <thread>
 
 namespace cqy {
   struct node_pong : public cqy_ctx_t {
@@ -23,7 +19,7 @@ namespace cqy {
 
     virtual bool on_init(std::string_view param) override {
       ELOG_INFO << "param: " << param;
-      app->ctx_mgr.resiger_name("pong", id);
+      app->ctx_mgr.register_name("pong", id.id);
 
       echo = param;
 
@@ -40,7 +36,7 @@ namespace cqy {
       co_await coro_io::sleep_for(std::chrono::milliseconds(10));
       cqy_handle_t from = msg->from;
       auto buffer = msg->buffer();
-      ELOG_INFO << std::format("from {}:{} msg:{}", from.nodeid, from.hid(), msg->buffer());
+      ELOG_INFO << std::format("from {:0x} msg:{}", from.id, msg->buffer());
       respone(msg, echo);
       doing = false;
       co_return;

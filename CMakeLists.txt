@@ -9,19 +9,21 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     if (CMAKE_CXX_COMPILER_VERSION MATCHES "12.*")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-maybe-uninitialized")
     endif()
-endif()
-
-link_libraries(yalantinglibs::yalantinglibs)
-add_executable(ping cqy.h ping.cpp)
-add_executable(pong cqy.h pong.cpp)
-add_subdirectory(3rd/yalantinglibs)
-
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    message(STATUS "Using gcc compiler.")
     add_compile_options(-fsanitize=address -g)
-    target_link_libraries(ping PRIVATE asan)
-    target_link_libraries(pong PRIVATE asan)
-else()
+    link_libraries(asan)
+elseif()
     add_compile_options("/wd4819")
     add_compile_options("/wd4267")
 endif()
+
+include_directories(3rd/yalantinglibs/src/include)
+link_libraries(yalantinglibs::yalantinglibs cqy)
+
+add_library(cqy STATIC cqy.h cqy.cpp)
+link_directories(cqy)
+
+add_executable(ping ping.cpp)
+add_executable(pong pong.cpp)
+add_executable(test test.cpp)
+add_subdirectory(3rd/yalantinglibs)
+

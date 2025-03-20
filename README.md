@@ -22,3 +22,10 @@
 - `cqy_ctx_t` 注册的 RPC 函数和 `on_msg` 都是无竞争的。
 
 **注意**：协程函数一旦 `await` 让出当前操作，下一个消息或 RPC 可能会在 `await` 结束之前调用。
+
+## TODO
+- add test
+- add script
+- add custom msg pack
+- support node config reload
+- support route name to node
