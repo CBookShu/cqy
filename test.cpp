@@ -1,3 +1,4 @@
+#include "ylt/coro_io/coro_io.hpp"
 #include <optional>
 #include <stop_token>
 #include <thread>
@@ -242,6 +243,8 @@ TEST_CASE("app:thread") {
   app1.stop();
 }
 
+// dispatch will retry to send message if the node is not ready
+// so if you want msg not drop when the node is not ready, you can use dispatch
 TEST_CASE("ctx:dispatch") {
   using namespace cqy;
   using namespace std;
@@ -304,7 +307,97 @@ TEST_CASE("ctx:dispatch") {
 
   t1.join();
   t2.join();
-  
+
+  app2.stop();
+  app1.stop();
+}
+
+// if the node is not ready, the message may not be sent
+TEST_CASE("ctx:rpc") {
+  using namespace cqy;
+  using namespace std;
+  cqy_app app1;
+  cqy_app app2;
+  struct ctx_test1 : public cqy_ctx_t {
+    uint32_t send_id = 0;
+    virtual bool on_init(std::string_view param) override {
+      test_rpc().via(ex).detach();
+      return true;
+    }
+    Lazy<void> test_rpc() {
+      auto r = co_await app->ctx_call_name<int, std::string>("n2.ctx_test2", "get_rpc_test_21", 1, "hello");
+      CHECK(r.as<int>() == 6);
+      r = co_await app->ctx_call_name<int, std::string>("n2.ctx_test2", "get_rpc_test_20", 1, "hello");
+      CHECK(!r.has_error());
+      r = co_await app->ctx_call_name<int>("n2.ctx_test2", "get_rpc_test_11", 1);
+      CHECK(r.as<int>() == 1);
+      r = co_await app->ctx_call_name<int>("n2.ctx_test2", "get_rpc_test_10", 1);
+      CHECK(!r.has_error());
+      app->close_server();
+      co_return;
+    }
+  };
+  app1.reg_ctx<ctx_test1>("ctx_test1");
+  std::jthread t1([&app1,&app2] {
+    app1.config.thread = 3;
+    app1.config.nodeid = 1;
+    app1.config.nodes.push_back({
+      .name = "n1", .ip = "127.0.0.1", .nodeid = 1,  .port = 8888}
+    );
+    app1.config.nodes.push_back({
+      .name = "n2", .ip = "127.0.0.1", .nodeid = 2,  .port = 8889}
+    );
+    app1.config.bootstrap = "ctx_test1 hello";
+    app1.start();
+    app2.close_server();
+  });
+
+  struct ctx_test2 : public cqy_ctx_t {
+    virtual bool on_init(std::string_view param) override {
+      register_name("ctx_test2");
+      register_rpc_func<&ctx_test2::get_rpc_test_21>("get_rpc_test_21");
+      register_rpc_func<&ctx_test2::get_rpc_test_20>("get_rpc_test_20");
+      register_rpc_func<&ctx_test2::get_rpc_test_11>("get_rpc_test_11");
+      register_rpc_func<&ctx_test2::get_rpc_test_10>("get_rpc_test_10");
+      return true;
+    }
+    // 2 params; 1 return
+    Lazy<int> get_rpc_test_21(int a, std::string s) {
+      co_return a + s.size();
+    }
+    // 2 params; 0 return
+    Lazy<void> get_rpc_test_20(int a, std::string s) {
+      CHECK(a == 1);
+      CHECK(s == "hello");
+      co_return;
+    }
+    // 1 params; 1 return
+    Lazy<int> get_rpc_test_11(int a) {
+      co_return a;
+    }
+    // 1 params; 0 return
+    Lazy<void> get_rpc_test_10(int a) {
+      CHECK(a == 1);
+      co_return;
+    }
+  };
+  app2.reg_ctx<ctx_test2>("ctx_test2");
+  std::jthread t2([&app2] {
+    app2.config.thread = 3;
+    app2.config.nodeid = 2;
+    app2.config.nodes.push_back({
+      .name = "n1", .ip = "127.0.0.1", .nodeid = 1,  .port = 8888}
+    );
+    app2.config.nodes.push_back({
+      .name = "n2", .ip = "127.0.0.1", .nodeid = 2,  .port = 8889}
+    );
+    app2.config.bootstrap = "ctx_test2";
+    app2.start();
+  });
+
+  t1.join();
+  t2.join();
+
   app2.stop();
   app1.stop();
 }

@@ -537,7 +537,7 @@ struct cqy_ctx_t {
   void respone(cqy_msg_t *msg, std::string);
 
 protected:
-  template <auto F> void register_rpc_func();
+  template <auto F> void register_rpc_func(std::string_view name = "");
   void register_name(std::string name);
 private:
   friend struct cqy_app;
@@ -645,6 +645,10 @@ struct cqy_app {
   cqy_ctx_mgr_t ctx_mgr;
   std::atomic_bool bstop{false};
 
+  ~cqy_app() {
+    stop();
+  }
+
   template <typename T> void reg_ctx(std::string name = "") {
     if (name.empty()) {
       name = ylt::reflection::type_string<T>();
@@ -696,8 +700,10 @@ private:
   Lazy<void> node_mq_spawn(uint8_t id);
 };
 
-template <auto F> void cqy_ctx_t::register_rpc_func() {
-  constexpr auto name = coro_rpc::get_func_name<F>();
+template <auto F> void cqy_ctx_t::register_rpc_func(std::string_view name) {
+  if (name.empty()) {
+    name = coro_rpc::get_func_name<F>();
+  }
   cpp_rpc_router[std::string(name.data(), name.size())] =
       [this](std::string_view data) -> Lazy<rpc_result_t> {
     using class_type_t = util::class_type_t<decltype(F)>;
