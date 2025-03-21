@@ -141,7 +141,7 @@ struct algo {
 
   template <typename T> static std::optional<T> to_n(std::string_view s) {
     T n{};
-    auto r = std::from_chars(s.begin(), s.end(), n);
+    auto r = std::from_chars(s.data(), s.data() + s.size(), n);
     auto ec = std::make_error_code(r.ec);
     if (ec) {
       return std::nullopt;
