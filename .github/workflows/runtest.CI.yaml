@@ -18,7 +18,7 @@ jobs:
 
     - name: Configure and build
       run: |
-        mkdir build
+        mkdir build -p
         cd build
         cmake ..
         make -j$(nproc)
