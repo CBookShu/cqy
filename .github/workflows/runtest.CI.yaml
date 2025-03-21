@@ -24,5 +24,6 @@ jobs:
         make -j$(nproc)
 
     - name: Run tests
+      run: |
         cd build
         ctest .
