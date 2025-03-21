@@ -1,6 +1,8 @@
 #include "cqy.h"
+#include "ylt/coro_io/coro_io.hpp"
 #include "ylt/easylog.hpp"
 #include <cassert>
+#include <chrono>
 #include <format>
 #include <string_view>
 
@@ -17,7 +19,7 @@ namespace cqy {
     }
 
     virtual bool on_init(std::string_view param) override {
-      MELOGFMT(INFO, 1, "param:{}", param);
+      CQY_INFO("param:{}", param);
       register_name("pong");
 
       echo = param;
@@ -29,8 +31,10 @@ namespace cqy {
 
     virtual Lazy<void> on_msg(cqy_msg_t* msg) override {
       assert(ex->currentThreadInExecutor());
-      MELOGFMT(INFO, 1, "from {:0x} msg:{}", msg->from, msg->buffer());
+      CQY_INFO("from {:0x} msg:{}", msg->from, msg->buffer());
       respone(msg, echo);
+      co_await coro_io::sleep_for( std::chrono::seconds(1));
+      app->close_server();
       co_return;
     }
   };

@@ -1,5 +1,6 @@
 #include "cqy.h"
 #include "iguana/json_reader.hpp"
+#include "ylt/coro_io/coro_io.hpp"
 #include "ylt/easylog.hpp"
 #include "ylt/struct_pack.hpp"
 #include <cassert>
@@ -14,7 +15,7 @@ struct node_ping : public cqy_ctx_t {
   uint32_t last_session = 0;
 
   virtual bool on_init(std::string_view param) override {
-    ELOG_INFO << "param " << param;
+    CQY_INFO("param:{}", param);
     app->ctx_mgr.register_name("ping", id);
 
     test().via(this->ex).detach();
@@ -23,7 +24,9 @@ struct node_ping : public cqy_ctx_t {
 
   virtual Lazy<void> on_msg(cqy_msg_t *msg) override {
     assert(msg->session == last_session);
-    ELOG_INFO << std::format("from {:0x} msg:{}", msg->from, msg->buffer());
+    CQY_INFO("from {:0x} msg:{}", msg->from, msg->buffer());
+    co_await coro_io::sleep_for(std::chrono::seconds(1));
+    app->close_server();
     co_return;
   }
 
@@ -40,7 +43,7 @@ struct node_ping : public cqy_ctx_t {
       */
       auto r = co_await app->ctx_call_name<std::string_view>(
           "n1.pong", "rpc_pong", "hello");
-      ELOG_INFO << std::format("rpc_pong res:{}", r.as<size_t>());
+      CQY_INFO("rpc_pong res:{}", r.as<size_t>());
 
       r = co_await app->ctx_call_name<std::string_view>("n1.pong", "rpc_pong1",
                                                         "hello");
@@ -55,7 +58,7 @@ struct node_ping : public cqy_ctx_t {
       */
       last_session = dispatch("n1.pong", 0, "hello");
     } catch (std::exception &e) {
-      ELOG_INFO << e.what();
+      CQY_WARN("exception:{}", e.what());
     }
   }
 };

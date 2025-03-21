@@ -89,11 +89,11 @@ void cqy_app::create_client() {
         try {
           throw tr.getException();
         } catch (std::exception &e) {
-          ELOG_ERROR << std::format("node:{} connect exception:{}", id,
+          CQY_ERROR("node:{} connect exception:{}", id,
                                     e.what());
         }
       } else {
-        ELOG_INFO << std::format("node:{} connect stop", id);
+        CQY_INFO("node:{} connect stop", id);
       }
     });
   }
@@ -109,7 +109,7 @@ void cqy_app::load_config(std::string_view file) {
 void cqy_app::rpc_server_start() { 
   auto ec = node.rpc_server->start();
   if (ec) {
-    ELOG_ERROR << std::format("rpc_server start error:{}", ec.message());
+    CQY_ERROR("rpc_server start error:{}", ec.message());
   }
 }
 
@@ -151,7 +151,7 @@ Lazy<void> cqy_app::rpc_on_mq(std::deque<std::string> msgs) {
   for (auto &msg : msgs) {
     auto cqy_msg = cqy_msg_t::parse(msg, true);
     if (!cqy_msg) {
-      ELOG_WARN << std::format("rpc_on_mq msg error");
+      CQY_ERROR("rpc_on_mq msg error");
       co_return;
     }
     auto to = cqy_msg->to;
@@ -164,7 +164,7 @@ Lazy<void> cqy_app::rpc_on_mq(std::deque<std::string> msgs) {
       ctx->msg_queue.push(std::move(msg));
     } else {
       cqy_handle_t ch(to);
-      ELOG_WARN << std::format("rpc_on_mq to:{:0x} can`t find", ch.id);
+      CQY_ERROR("rpc_on_mq to:{:0x} can`t find", ch.id);
     }
   }
 }
@@ -246,7 +246,7 @@ void cqy_app::node_mq_push(std::string msg) {
     if (mq_node) {
       mq_node->coro_queue.push(std::move(msg));
     } else {
-      ELOG_WARN << std::format("node:{} no config msg drop", to.nodeid);
+      CQY_ERROR("node:{} no config msg drop", to.nodeid);
     }
   }
 }
@@ -262,7 +262,7 @@ Lazy<void> cqy_app::node_mq_spawn(uint8_t id) {
     auto cur_size = co_await n->coro_queue.size();
     if (cur_size >= warn_size) {
       warn_size = warn_size * 2;
-      ELOG_WARN << std::format("node:{} queue size:{}", id, cur_size);
+      CQY_WARN("node:{} queue size:{}", id, cur_size);
     } else {
       warn_size = std::clamp<size_t>(warn_size / 2, 1024,
                                      std::numeric_limits<size_t>::max());
@@ -299,7 +299,7 @@ Lazy<void> cqy_app::node_mq_spawn(uint8_t id) {
 void cqy_app::create_ctx(std::string_view name, std::string_view param) {
   auto ctx = ctx_mgr.create(name);
   if (!ctx) {
-    ELOG_WARN << std::format("ctx:{} create error", name);
+    CQY_ERROR("ctx:{} create error", name);
     return;
   }
   ctx->app = this;
@@ -308,7 +308,7 @@ void cqy_app::create_ctx(std::string_view name, std::string_view param) {
   ctx->id.set_ctxid(ctx_id);
   ctx->ex = coro_io::get_global_block_executor();
   if (!ctx->on_init(param)) {
-    ELOG_WARN << std::format("ctx:{} init error", name);
+    CQY_ERROR("ctx:{} init error", name);
     return;
   }
 
