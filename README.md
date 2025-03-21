@@ -2,9 +2,16 @@
 
 一个 P2P 的节点分布式小工具，代码由 C++ 协程组织。
 
+# build
+
+| OS (Compiler Version)                          | Status                                                                                                    |
+|------------------------------------------------|-----------------------------------------------------------------------------------------------------------|
+| Ubuntu 22.04                    | ![ubuntu](https://github.com/CBookShu/cqy/actions/workflows/runtestwsl.yaml/badge.svg?branch=main) |
+| Windows Server 2022 (MSVC 19.33.31630.0)       | ![win-msvc](https://github.com/CBookShu/cqy/actions/workflows/runtestwin32.yaml/badge.svg?branch=main)     |
+
 ## 示例
 
-具体示例，请参见 `ping` 和 `pong`。
+具体示例，请参见 `ping` , `pong`, 还有 `test`
 
 ## 配置
 
