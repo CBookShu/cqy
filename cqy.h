@@ -625,7 +625,7 @@ struct cqy_config_t {
   uint8_t nodeid = 1;
   uint32_t thread = std::thread::hardware_concurrency();
   std::vector<cqy_node_info_t> nodes;
-std::string bootstrap;
+  std::string bootstrap;
 };
 
 struct cqy_app {

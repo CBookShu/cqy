@@ -62,7 +62,7 @@ struct node_ping : public cqy_ctx_t {
 } // namespace cqy
 
 int main() {
-  easylog::set_min_severity(easylog::Severity::INFO);
+  easylog::set_min_severity(easylog::Severity::WARN);
   using namespace std;
   cqy::cqy_app app;
   app.load_config("config2.json");

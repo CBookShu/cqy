@@ -20,11 +20,12 @@ include_directories(3rd/yalantinglibs/src/include)
 link_libraries(yalantinglibs::yalantinglibs)
 
 add_library(cqy STATIC cqy.h cqy.cpp)
+target_include_directories(cqy PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 link_libraries(cqy)
-add_executable(ping ping.cpp)
-add_executable(pong pong.cpp)
-add_executable(test test.cpp)
+add_executable(ping example/ping.cpp)
+add_executable(pong example/pong.cpp)
+add_executable(test test/test.cpp)
 
 add_test(NAME tests COMMAND test)
 add_subdirectory(3rd/yalantinglibs)

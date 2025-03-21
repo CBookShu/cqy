@@ -17,7 +17,7 @@ namespace cqy {
     }
 
     virtual bool on_init(std::string_view param) override {
-      ELOG_INFO << "param: " << param;
+      MELOGFMT(INFO, 1, "param:{}", param);
       register_name("pong");
 
       echo = param;
@@ -29,7 +29,7 @@ namespace cqy {
 
     virtual Lazy<void> on_msg(cqy_msg_t* msg) override {
       assert(ex->currentThreadInExecutor());
-      ELOG_INFO << std::format("from {:0x} msg:{}", msg->from, msg->buffer());
+      MELOGFMT(INFO, 1, "from {:0x} msg:{}", msg->from, msg->buffer());
       respone(msg, echo);
       co_return;
     }
@@ -38,7 +38,7 @@ namespace cqy {
 
 int main() {
   using namespace std;
-  easylog::set_min_severity(easylog::Severity::INFO);
+  easylog::set_min_severity(easylog::Severity::WARN);
   cqy::cqy_app app;
   app.reg_ctx<cqy::node_pong>("pong");
   app.load_config("config1.json");
