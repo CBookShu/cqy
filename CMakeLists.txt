@@ -17,11 +17,11 @@ elseif()
 endif()
 
 include_directories(3rd/yalantinglibs/src/include)
-link_libraries(yalantinglibs::yalantinglibs cqy)
+link_libraries(yalantinglibs::yalantinglibs)
 
 add_library(cqy STATIC cqy.h cqy.cpp)
 
-
+link_libraries(cqy)
 add_executable(ping ping.cpp)
 add_executable(pong pong.cpp)
 add_executable(test test.cpp)
