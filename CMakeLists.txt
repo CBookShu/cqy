@@ -20,10 +20,11 @@ include_directories(3rd/yalantinglibs/src/include)
 link_libraries(yalantinglibs::yalantinglibs cqy)
 
 add_library(cqy STATIC cqy.h cqy.cpp)
-link_directories(cqy)
+
 
 add_executable(ping ping.cpp)
 add_executable(pong pong.cpp)
 add_executable(test test.cpp)
-add_subdirectory(3rd/yalantinglibs)
 
+add_test(NAME tests COMMAND test)
+add_subdirectory(3rd/yalantinglibs)
