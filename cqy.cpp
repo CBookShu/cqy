@@ -22,10 +22,6 @@ void cqy_app::start() {
 }
 
 void cqy_app::stop() {
-  if(bstop.exchange(true)) {
-    return;
-  }
-
   for(auto &n : node.mqs) {
     n->coro_queue.shutdown();
   }
@@ -42,16 +38,12 @@ void cqy_app::stop() {
       ctx->wait_stop->wait();
     }
   }
-  for (auto id : ctxids) {
-    auto ctx = ctx_mgr.get_ctx(id);
-    if (ctx) {
-      ctx->app = nullptr;
-      ctx_mgr.del_ctx(id);
-    }
-  }
 }
 
 void cqy_app::close_server() {
+  if (bstop.exchange(true)) {
+    return;
+  }
   if (node.rpc_server) {
     std::thread thrd{[this] {
       node.rpc_server->stop();
