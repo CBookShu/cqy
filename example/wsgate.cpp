@@ -71,9 +71,6 @@ cqy::Lazy<void> ws_start() {
 }
 
 struct ws_server_t : public cqy::cqy_ctx_t {
-  enum {
-    TYPE_SUB = 1,
-  };
   cqy::uptr<coro_http::coro_http_server> server;
   // guard by lock
   cqy::coro_spinlock lock;
