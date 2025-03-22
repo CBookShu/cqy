@@ -19,57 +19,6 @@
 #include <unordered_set>
 #include <utility>
 
-cqy::Lazy<void> ws_start() {
-  using namespace cinatra;
-  using namespace std::chrono_literals;
-
-  coro_http::coro_http_server server(1, 9001);
-  auto cert_path = std::filesystem::current_path().append("server.crt");
-  auto key_path = std::filesystem::current_path().append("server.key");
-  server.init_ssl(cert_path.string(), key_path.string(), "");
-
-  server.set_http_handler<cinatra::GET>(
-      "/ws_echo",
-      [](coro_http_request &req,
-         coro_http_response &resp) -> async_simple::coro::Lazy<void> {
-        assert(req.get_content_type() == content_type::websocket);
-        websocket_result result{};
-        while (true) {
-          result = co_await req.get_conn()->read_websocket();
-          if (result.ec) {
-            break;
-          }
-
-          if (result.type == ws_frame_type::WS_CLOSE_FRAME) {
-            std::cout << "close frame\n";
-            break;
-          }
-
-          if (result.type == ws_frame_type::WS_TEXT_FRAME ||
-              result.type == ws_frame_type::WS_BINARY_FRAME) {
-            std::cout << result.data << "\n";
-          } else if (result.type == ws_frame_type::WS_PING_FRAME ||
-                     result.type == ws_frame_type::WS_PONG_FRAME) {
-            // ping pong frame just need to continue, no need echo anything,
-            // because framework has reply ping/pong msg to client
-            // automatically.
-            continue;
-          } else {
-            // error frame
-            break;
-          }
-
-          auto ec = co_await req.get_conn()->write_websocket(result.data);
-          if (ec) {
-            break;
-          }
-        }
-      });
-  auto res = server.sync_start();
-  CQY_INFO("server start:{}", res.message());
-  co_return;
-}
-
 struct ws_server_t : public cqy::cqy_ctx_t {
   cqy::uptr<coro_http::coro_http_server> server;
   // guard by lock
