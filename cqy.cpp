@@ -121,11 +121,11 @@ auto cqy_app::get_nodeinfo(uint32_t id) -> cqy_node_info_t * {
   }
   return nullptr;
 }
-auto cqy_app::get_nodeinfo() -> cqy_node_info_t * {
-  return get_nodeinfo(config.nodeid);
-}
 
 auto cqy_app::get_nodeinfo(std::string_view name) -> cqy_node_info_t * {
+  if (name.empty()) {
+    return get_nodeinfo(config.nodeid);
+  }
   for (auto &n : config.nodes) {
     if (n.name == name) {
       return &n;
@@ -338,13 +338,14 @@ Lazy<void> cqy_ctx_t::wait_msg_spawn() {
     } catch (...) {
     }
   }
+  on_stop();
   wait_stop->count_down();
 }
 
 uint32_t cqy_ctx_t::dispatch(uint32_t to, uint8_t t, std::string data) {
   std::string s;
   auto sessionid = ++this->session;
-  cqy_msg_t::make(s, this->id, to, sessionid, t, data);
+  cqy_msg_t::make(s, this->id, to, sessionid, t, false, data);
   app->node_mq_push(std::move(s));
   return sessionid;
 }
@@ -366,7 +367,7 @@ uint32_t cqy_ctx_t::dispatch(std::string_view nodectx, uint8_t t, std::string da
   std::string s;
   assert(ctxname.size() < std::numeric_limits<uint8_t>::max());
   auto sessionid = ++this->session;
-  cqy_msg_t::make(s, this->id, nodeid, ctxname, sessionid, t, data);
+  cqy_msg_t::make(s, this->id, nodeid, ctxname, sessionid, t, false, data);
   app->node_mq_push(std::move(s));
   return sessionid;
 }
@@ -375,6 +376,6 @@ void cqy_ctx_t::respone(cqy_msg_t *msg, std::string data) {
   std::string s;
   auto rsp =
       cqy_msg_t::make(s, this->id, msg->from, msg->session,
-                      algo::to_underlying(cqy_msg_type_t::response), data);
+                      msg->type, true, data);
   app->node_mq_push(std::move(s));
 }

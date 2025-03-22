@@ -121,9 +121,6 @@ struct algo {
     auto sp = s | std::views::split(div);
     std::vector<std::string_view> res;
     for (auto &&sub_range : sp) {
-      if (sub_range.empty()) {
-        continue;
-      }
       res.emplace_back(sub_range.begin(), sub_range.end());
     }
     return res;
@@ -177,6 +174,8 @@ using coro_mutex = async_simple::coro::Mutex;
 template <typename M> using coro_cv = async_simple::coro::ConditionVariable<M>;
 
 template <typename T> using sptr = std::shared_ptr<T>;
+
+template <typename T> using wptr = std::weak_ptr<T>;
 
 template <typename T> using uptr = std::unique_ptr<T>;
 
@@ -278,7 +277,7 @@ using cqy_rpc_client_pool = coro_io::client_pool<cqy_rpc_client>;
 
 enum class cqy_msg_type_t : uint8_t {
   none = 0,
-  response = 1,
+  // custom
 };
 
 struct cqy_handle_t {
@@ -324,7 +323,8 @@ struct cqy_msg_t {
   uint8_t type;
   struct {
     uint8_t route : 1;
-    uint8_t reserved6 : 7;
+    uint8_t response : 1;
+    uint8_t reserved6 : 6;
   };
   uint8_t reserved2[2];
 
@@ -376,7 +376,7 @@ struct cqy_msg_t {
   }
 
   static cqy_msg_t *make(std::string &s, uint32_t source, uint32_t to,
-                         uint32_t session, uint8_t t, std::string_view data) {
+                         uint32_t session, uint8_t t, bool rsp, std::string_view data) {
     iguana::detail::resize(s, sizeof(cqy_msg_t) + data.size());
     std::ranges::copy(data, s.data() + sizeof(cqy_msg_t));
     auto *cmsg = parse(s, false);
@@ -385,12 +385,13 @@ struct cqy_msg_t {
     cmsg->to = to;
     cmsg->session = session;
     cmsg->len = s.size() - sizeof(cqy_msg_t);
+    cmsg->response = rsp;
     cmsg->type = t;
     return cmsg;
   }
 
   static cqy_msg_t *make(std::string &s, uint32_t source, uint8_t nodeto,
-                         std::string_view name, uint32_t session, uint8_t t,
+                         std::string_view name, uint32_t session, uint8_t t,bool rsp,
                          std::string_view data) {
     /*
     cqy_msg_t           + size      + name            + data
@@ -412,6 +413,7 @@ struct cqy_msg_t {
     cmsg->session = session;
     cmsg->type = t;
     cmsg->route = 1;
+    cmsg->response = rsp;
     cmsg->len = s.size() - sizeof(cqy_msg_t);
     return cmsg;
   }
@@ -529,6 +531,7 @@ struct cqy_ctx_t {
   /*virtual ~cqy_ctx_t() {};*/
   virtual bool on_init(std::string_view param) { return true; }
   virtual Lazy<void> on_msg(cqy_msg_t *msg) { co_return; }
+  virtual void on_stop() {}
 
   uint32_t dispatch(uint32_t to, uint8_t t, std::string data);
   uint32_t dispatch(std::string_view nodectx, uint8_t t, std::string data);
@@ -662,8 +665,7 @@ struct cqy_app {
   void stop();
 
   auto get_nodeinfo(uint32_t id) -> cqy_node_info_t *;
-  auto get_nodeinfo() -> cqy_node_info_t *;
-  auto get_nodeinfo(std::string_view name) -> cqy_node_info_t *;
+  auto get_nodeinfo(std::string_view name = "") -> cqy_node_info_t *;
 
   /*
     format

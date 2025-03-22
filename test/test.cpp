@@ -35,10 +35,11 @@ TEST_CASE("algo::split") {
   CHECK(vs[2] == "!");
 
   vs = algo::split("hello world ! ", " ");
-  CHECK(vs.size() == 3);
+  CHECK(vs.size() == 4);
   CHECK(vs[0] == "hello");
   CHECK(vs[1] == "world");
   CHECK(vs[2] == "!");
+  CHECK(vs[3] == "");
 }
 
 TEST_CASE("algo:split_one") {
@@ -256,7 +257,7 @@ TEST_CASE("ctx:dispatch") {
     }
     virtual Lazy<void> on_msg(cqy_msg_t* msg) override {
       CHECK(msg->buffer() == "world");
-      CHECK(msg->type == 1);    // response
+      CHECK(msg->response);    // response
       CHECK(msg->session == send_id);
       app->close_server();
       co_return;

@@ -9,6 +9,9 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     if (CMAKE_CXX_COMPILER_VERSION MATCHES "12.*")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-maybe-uninitialized")
     endif()
+    # sudo apt update && sudo apt upgrade -y
+    # sudo apt install openssl libssl-dev libssl-doc
+    set(YLT_ENABLE_SSL ON)
     add_compile_options(-fsanitize=address -g)
     link_libraries(asan)
 elseif()
@@ -25,6 +28,7 @@ target_include_directories(cqy PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 link_libraries(cqy)
 add_executable(ping example/ping.cpp)
 add_executable(pong example/pong.cpp)
+add_executable(wsgate example/wsgate.cpp)
 add_executable(test test/test.cpp)
 
 add_test(NAME tests COMMAND test)

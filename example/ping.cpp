@@ -24,6 +24,7 @@ struct node_ping : public cqy_ctx_t {
 
   virtual Lazy<void> on_msg(cqy_msg_t *msg) override {
     assert(msg->session == last_session);
+    assert(msg->response);
     CQY_INFO("from {:0x} msg:{}", msg->from, msg->buffer());
     co_await coro_io::sleep_for(std::chrono::seconds(1));
     app->close_server();
@@ -53,8 +54,8 @@ struct node_ping : public cqy_ctx_t {
         dispatch type:0, msg:hello 给 n1的pong
         注意: dispatch 一定会成功，对面不在线，会一遍一遍尝试。
         dispatch 和 rpc 调用不使用同一个通道，dispatch 会一直尝试，直到对面上线。
-        dispatch 中 type 和 msg 都是可定制的（type 除了1 是response，其他随意自行定制）
-        此外，对方如果response的话，返回的消息 type = 1, sessionid 是dispatch的返回值
+        dispatch 中 type 和 msg 都是可定制的
+        此外，对方如果response的话，返回的话，可以在msg.response 进行判断，并且session跟dispatch返回值一致
       */
       last_session = dispatch("n1.pong", 0, "hello");
     } catch (std::exception &e) {
