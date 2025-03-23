@@ -1,10 +1,8 @@
 [submodule "3rd/yalantinglibs"]
 	path = 3rd/yalantinglibs
 	url = https://github.com/alibaba/yalantinglibs.git
+	
 [submodule "3rd/msgpack-c"]
 	path = 3rd/msgpack-c
 	url = https://github.com/msgpack/msgpack-c.git
 	branch = cpp_master
-[submodule "3rd/3rd/yalantinglibs"]
-	path = 3rd/3rd/yalantinglibs
-	url = https://github.com/alibaba/yalantinglibs.git
