@@ -246,11 +246,11 @@ struct ws_server_t : public cqy::cqy_ctx_t {
 };
 
 struct gate_t : public cqy::cqy_ctx_t {
-  uint64_t conn_alloc = 0;
+  std::atomic_int64_t conn_alloc = 0;
 
   virtual bool on_init(std::string_view param) {
     register_name("gate");
-    register_rpc_func<&gate_t::rpc_get_allocid>("get_allocid");
+    register_rpc_func<&gate_t::rpc_get_allocid, true>("get_allocid");
     register_rpc_func<&gate_t::rpc_on_conn_start>("on_conn_start");
     register_rpc_func<&gate_t::rpc_on_msg>("on_msg");
     register_rpc_func<&gate_t::rpc_on_conn_stop>("on_conn_stop");

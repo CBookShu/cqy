@@ -376,7 +376,8 @@ struct cqy_msg_t {
   }
 
   static cqy_msg_t *make(std::string &s, uint32_t source, uint32_t to,
-                         uint32_t session, uint8_t t, bool rsp, std::string_view data) {
+                         uint32_t session, uint8_t t, bool rsp,
+                         std::string_view data) {
     iguana::detail::resize(s, sizeof(cqy_msg_t) + data.size());
     std::ranges::copy(data, s.data() + sizeof(cqy_msg_t));
     auto *cmsg = parse(s, false);
@@ -391,8 +392,8 @@ struct cqy_msg_t {
   }
 
   static cqy_msg_t *make(std::string &s, uint32_t source, uint8_t nodeto,
-                         std::string_view name, uint32_t session, uint8_t t,bool rsp,
-                         std::string_view data) {
+                         std::string_view name, uint32_t session, uint8_t t,
+                         bool rsp, std::string_view data) {
     /*
     cqy_msg_t           + size      + name            + data
     sizeof(cqy_msg_t)   uint8_t     name.size()       data.size()
@@ -523,6 +524,7 @@ struct cqy_ctx_t {
   uptr<std::latch> wait_stop;
   std::atomic_uint32_t session = 0;
   cqy_coro_queue_t msg_queue;
+
   std::unordered_map<std::string,
                      std::function<Lazy<rpc_result_t>(std::string_view)>,
                      string_hash, std::equal_to<>>
@@ -538,8 +540,10 @@ struct cqy_ctx_t {
   void respone(cqy_msg_t *msg, std::string);
 
 protected:
-  template <auto F> void register_rpc_func(std::string_view name = "");
+  template <auto F, bool muli = false>    // muli = true
+  void register_rpc_func(std::string_view name = "");
   void register_name(std::string name);
+
 private:
   friend struct cqy_app;
   Lazy<void> wait_msg_spawn();
@@ -646,9 +650,7 @@ struct cqy_app {
   cqy_ctx_mgr_t ctx_mgr;
   std::atomic_bool bstop{false};
 
-  ~cqy_app() {
-    stop();
-  }
+  ~cqy_app() { stop(); }
 
   template <typename T> void reg_ctx(std::string name = "") {
     if (name.empty()) {
@@ -673,7 +675,8 @@ struct cqy_app {
     result:
     pair<handle,ctxname>
   */
-  auto get_handle(std::string_view name) -> optv<std::pair<cqy_handle_t, std::string_view>>;
+  auto get_handle(std::string_view name)
+      -> optv<std::pair<cqy_handle_t, std::string_view>>;
 
   Lazy<void> rpc_on_mq(std::deque<std::string> msgs);
   Lazy<rpc_result_t> rpc_ctx_call(uint32_t to, std::string_view func_name,
@@ -700,30 +703,34 @@ private:
   Lazy<void> node_mq_spawn(uint8_t id);
 };
 
-template <auto F> void cqy_ctx_t::register_rpc_func(std::string_view name) {
+template <auto F, bool muli>
+void cqy_ctx_t::register_rpc_func(std::string_view name) {
   if (name.empty()) {
     name = coro_rpc::get_func_name<F>();
   }
-  cpp_rpc_router[std::string(name.data(), name.size())] =
-      [this](std::string_view data) -> Lazy<rpc_result_t> {
+  cpp_rpc_router[std::string(name.data(), name.size())] = [this](std::string_view data) -> Lazy<rpc_result_t> {
     using class_type_t = util::class_type_t<decltype(F)>;
-    auto *pre_ex = co_await async_simple::CurrentExecutor();
-    auto in_ex = ex->currentThreadInExecutor();
-    if (!in_ex) {
-      co_await async_simple::coro::dispatch(ex);
+    if constexpr (muli) {
+      co_return co_await rpc_call_func<F>(data, static_cast<class_type_t *>(this));
+    } else {
+      auto *pre_ex = co_await async_simple::CurrentExecutor();
+      auto in_ex = ex->currentThreadInExecutor();
+      if (!in_ex) {
+        co_await async_simple::coro::dispatch(ex);
+      }
+      auto r = co_await rpc_call_func<F>(data, static_cast<class_type_t *>(this));
+      if (!in_ex) {
+        co_await async_simple::coro::dispatch(pre_ex);
+      }
+      co_return r;
     }
-    auto r = co_await rpc_call_func<F>(data, static_cast<class_type_t *>(this));
-    if (!in_ex) {
-      co_await async_simple::coro::dispatch(pre_ex);
-    }
-    co_return r;
   };
 }
 
 template <typename... fArgs, typename... Args>
-Lazy<rpc_result_t>
-cqy_app::ctx_call_name(std::string_view nodectx,
-                       std::string_view func_name, Args &&...args) {
+Lazy<rpc_result_t> cqy_app::ctx_call_name(std::string_view nodectx,
+                                          std::string_view func_name,
+                                          Args &&...args) {
   rpc_result_t result{};
   auto p = get_handle(nodectx);
   if (!p) {
@@ -751,7 +758,7 @@ cqy_app::ctx_call_name(std::string_view nodectx,
         [&](coro_rpc::coro_rpc_client &client)
             -> Lazy<coro_rpc::rpc_result<rpc_result_t>> {
           co_return co_await client.call<&cqy_app::rpc_ctx_call_name>(
-            nodectx, func_name, param);
+              nodectx, func_name, param);
         });
     if (!r) {
       result.status = -4;
