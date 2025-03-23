@@ -334,7 +334,7 @@ Lazy<void> cqy_ctx_t::wait_msg_spawn() {
   wait_stop->count_down();
 }
 
-uint32_t cqy_ctx_t::dispatch(uint32_t to, uint8_t t, std::string data) {
+uint32_t cqy_ctx_t::dispatch(uint32_t to, uint8_t t, std::string_view data) {
   std::string s;
   auto sessionid = ++this->session;
   cqy_msg_t::make(s, this->id, to, sessionid, t, false, data);
@@ -342,7 +342,7 @@ uint32_t cqy_ctx_t::dispatch(uint32_t to, uint8_t t, std::string data) {
   return sessionid;
 }
 
-uint32_t cqy_ctx_t::dispatch(std::string_view nodectx, uint8_t t, std::string data) {
+uint32_t cqy_ctx_t::dispatch(std::string_view nodectx, uint8_t t, std::string_view data) {
   auto p = app->get_handle(nodectx);
   if (!p) {
     return -1;
@@ -364,7 +364,7 @@ uint32_t cqy_ctx_t::dispatch(std::string_view nodectx, uint8_t t, std::string da
   return sessionid;
 }
 
-void cqy_ctx_t::respone(cqy_msg_t *msg, std::string data) {
+void cqy_ctx_t::respone(cqy_msg_t *msg, std::string_view data) {
   std::string s;
   auto rsp =
       cqy_msg_t::make(s, this->id, msg->from, msg->session,

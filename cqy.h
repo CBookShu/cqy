@@ -1,11 +1,13 @@
 #pragma once
 
+#include "async_simple/Try.h"
 #include "iguana/detail/string_resize.hpp"
 #include "ylt/coro_io/io_context_pool.hpp"
 #include "ylt/coro_rpc/impl/coro_rpc_client.hpp"
 #include "ylt/coro_rpc/impl/default_config/coro_rpc_config.hpp"
 #include "ylt/reflection/template_string.hpp"
 #include "ylt/struct_pack.hpp"
+#include "ylt/struct_pack/error_code.hpp"
 #include <algorithm>
 #include <atomic>
 #include <cassert>
@@ -27,6 +29,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <tuple>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
@@ -164,6 +167,8 @@ struct algo {
 };
 
 template <typename T> using Lazy = async_simple::coro::Lazy<T>;
+
+template <typename T> using Try = async_simple::Try<T>;
 
 using coro_spinlock = async_simple::coro::SpinLock;
 
@@ -535,10 +540,13 @@ struct cqy_ctx_t {
   virtual Lazy<void> on_msg(cqy_msg_t *msg) { co_return; }
   virtual void on_stop() {}
 
-  uint32_t dispatch(uint32_t to, uint8_t t, std::string data);
-  uint32_t dispatch(std::string_view nodectx, uint8_t t, std::string data);
-  void respone(cqy_msg_t *msg, std::string);
-
+  uint32_t dispatch(uint32_t to, uint8_t t, std::string_view data);
+  uint32_t dispatch(std::string_view nodectx, uint8_t t, std::string_view data);
+  template <typename...Args>
+  uint32_t dispatch_pack(std::string_view nodectx, uint8_t t, Args&&...args);
+  void respone(cqy_msg_t *msg, std::string_view);
+  template <typename...Args>
+  auto unpack(std::string_view msg);
 protected:
   template <auto F, bool muli = false>    // muli = true
   void register_rpc_func(std::string_view name = "");
@@ -702,6 +710,34 @@ private:
 
   Lazy<void> node_mq_spawn(uint8_t id);
 };
+
+template <typename...Args>
+auto cqy_ctx_t::unpack(std::string_view msg) {
+  using Tp = std::tuple<Args...>;
+  static_assert(std::tuple_size_v<Tp> > 0);
+  if constexpr (std::tuple_size_v<Tp> == 1) {
+    std::tuple_element_t<0, Tp> arg{};
+    auto ec = struct_pack::deserialize_to(arg, msg);
+    if (ec) {
+      throw std::runtime_error(std::format("struct deser err:{}", ec.message()));
+    }
+    return arg;
+  } else {
+    Tp args{};
+    auto ec = struct_pack::deserialize_to(args, msg);
+    if(ec) {
+      throw std::runtime_error(std::format("struct deser err:{}", ec.message()));
+    }
+    return args;
+  }
+}
+
+template <typename...Args>
+uint32_t cqy_ctx_t::dispatch_pack(std::string_view nodectx, uint8_t t, Args&&...args) {
+  std::string msg;
+  struct_pack::serialize_to(msg, std::forward<Args>(args)...);
+  return dispatch(nodectx, t, msg);
+}
 
 template <auto F, bool muli>
 void cqy_ctx_t::register_rpc_func(std::string_view name) {

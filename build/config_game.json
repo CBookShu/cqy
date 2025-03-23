@@ -1,0 +1,22 @@
+{
+  "nodes" :[
+    {
+      "name":"gate",
+      "ip":"127.0.0.1",
+      "nodeid":1,
+      "port":12348
+    },
+    {
+      "name":"world",
+      "ip":"127.0.0.1",
+      "nodeid":2,
+      "port":12346
+    },
+    {
+      "name":"game",
+      "ip":"127.0.0.1",
+      "nodeid":3,
+      "port":12345
+    }
+  ]
+}
