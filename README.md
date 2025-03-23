@@ -36,3 +36,4 @@
 - add custom msg pack
 - support node config reload
 - support route name to node
+- rpc 原生支持msgpack;
