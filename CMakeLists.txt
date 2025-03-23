@@ -31,7 +31,7 @@ link_libraries(cqy)
 add_executable(ping example/ping.cpp)
 add_executable(pong example/pong.cpp)
 add_executable(wsgate example/wsgate.cpp)
-add_executable(msgpack_rpc example/msgpack_rpc.cpp)
+# add_executable(msgpack_rpc example/msgpack_rpc.cpp)
 # target_link_libraries(msgpack_rpc PRIVATE msgpack-cxx)
 add_executable(test test/test.cpp)
 
