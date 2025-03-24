@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <string_view>
-
+#include <string>
 
 namespace cqy {
   enum class cqy_msg_type_t : uint8_t {
