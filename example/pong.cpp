@@ -7,7 +7,7 @@
 #include <string_view>
 
 namespace cqy {
-  struct node_pong : public cqy_ctx_t {
+  struct node_pong : public cqy_ctx {
     std::string echo;
 
     Lazy<size_t> rpc_pong(std::string_view s)  {
@@ -30,11 +30,11 @@ namespace cqy {
     }
 
     virtual Lazy<void> on_msg(cqy_msg_t* msg) override {
-      assert(ex->currentThreadInExecutor());
+      assert(get_coro_exe()->currentThreadInExecutor());
       CQY_INFO("from {:0x} msg:{}", msg->from, msg->buffer());
-      respone(msg, echo);
+      response(msg, echo);
       co_await coro_io::sleep_for( std::chrono::seconds(1));
-      app->close_server();
+      get_app()->stop();
       co_return;
     }
   };

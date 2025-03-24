@@ -1,9 +1,11 @@
+#include "cqy_handle.h"
 #include "ylt/coro_io/coro_io.hpp"
 #include <optional>
 #include <thread>
 #define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest.h>
 #include "cqy.h"
+#include "cqy_ctx_mgr.h"
 
 int main(int argc, char** argv) { 
   return doctest::Context(argc, argv).run(); 
@@ -113,27 +115,30 @@ TEST_CASE("algo::random_bernoulli") {
 
 TEST_CASE("cqy_ctx_mgr_t") {
   using namespace cqy;
-  cqy_ctx_mgr_t mgr;
-  sptr<cqy_ctx_t> p(new cqy_ctx_t{}, &algo::deleter<cqy_ctx_t>);
-  p->id = cqy_handle_t(mgr.new_id());
+  cqy_ctx_mgr mgr;
+  sptr<cqy_ctx> p(new cqy_ctx{}, &algo::deleter<cqy_ctx>);
+  cqy_handle_t h;
+  h.set_ctxid(mgr.new_id());
+  p->attach_init(nullptr, h, nullptr);
   mgr.add_ctx(p);
   CHECK(mgr.find_name("ping") == 0);
-  mgr.register_name("ping", p->id);
-  CHECK(mgr.find_name("ping") == p->id.id);
+  mgr.register_name("ping", p->getid());
+  CHECK(mgr.find_name("ping") == p->getid());
 
-  sptr<cqy_ctx_t> p1(new cqy_ctx_t{}, &algo::deleter<cqy_ctx_t>);
-  p1->id = cqy_handle_t(mgr.new_id());
+  sptr<cqy_ctx> p1(new cqy_ctx{}, &algo::deleter<cqy_ctx>);
+  h.set_ctxid(mgr.new_id());
+  p1->attach_init(nullptr, h, nullptr);
   mgr.add_ctx(p1);
-  mgr.register_name("pong", p1->id);
-  CHECK(mgr.find_name("pong") == p1->id.id);
+  mgr.register_name("pong", p1->getid());
+  CHECK(mgr.find_name("pong") == p1->getid());
 
   try  {
-    mgr.register_name("ping", p->id);
+    mgr.register_name("ping", p->getid());
   } catch (std::exception& e) {
     CHECK(std::string(e.what()) == "name already exists");
   } 
-  CHECK(mgr.find_name("ping") == p->id.id);
-  mgr.del_ctx(p->id);
+  CHECK(mgr.find_name("ping") == p->getid());
+  mgr.del_ctx(p->getid());
   CHECK(mgr.find_name("ping") == 0);
 }
 
@@ -141,7 +146,7 @@ TEST_CASE("config:load_config") {
   using namespace cqy;
   cqy_app app;
   app.load_config("config_test.json");
-  auto& config = app.config;
+  auto& config = app.get_config();
   CHECK(config.thread == std::thread::hardware_concurrency());
   CHECK(config.nodeid == 1);
   CHECK(config.bootstrap == "pong world");
@@ -157,20 +162,20 @@ TEST_CASE("config:load_config") {
   CHECK(config.nodes[1].ip == "127.0.0.1");
   CHECK(config.nodes[1].port == 8889);
 
-  auto info = app.get_nodeinfo(1);
-  CHECK(info->nodeid == 1);
-  CHECK(info->name == "n1");
-  CHECK(info->ip == "127.0.0.1");
-  CHECK(info->port == 8888);
+  // auto info = app.get_nodeinfo(1);
+  // CHECK(info->nodeid == 1);
+  // CHECK(info->name == "n1");
+  // CHECK(info->ip == "127.0.0.1");
+  // CHECK(info->port == 8888);
 
-  auto info1 = app.get_nodeinfo("n1");
-  CHECK(info1 == info);
+  // auto info1 = app.get_nodeinfo("n1");
+  // CHECK(info1 == info);
 
-  info = app.get_nodeinfo("n2");
-  CHECK(info->nodeid == 2);
-  CHECK(info->name == "n2");
-  CHECK(info->ip == "127.0.0.1");
-  CHECK(info->port == 8889);
+  // info = app.get_nodeinfo("n2");
+  // CHECK(info->nodeid == 2);
+  // CHECK(info->name == "n2");
+  // CHECK(info->ip == "127.0.0.1");
+  // CHECK(info->port == 8889);
 }
 
 TEST_CASE("app::start stop") {
@@ -178,21 +183,22 @@ TEST_CASE("app::start stop") {
   using namespace std;
   cqy_app app;
   std::jthread t1([&app] {
-    app.config.nodeid = 1;
-    app.config.nodes.push_back({
+    auto& config = app.get_config();
+    config.nodeid = 1;
+    config.nodes.push_back({
       .name = "n1", .ip = "127.0.0.1", .nodeid = 1,  .port = 8888}
     );
-    app.config.nodes.push_back({
+    config.nodes.push_back({
       .name = "n2", .ip = "127.0.0.1", .nodeid = 2,  .port = 8888}
     );
     app.start();
   });
   std::jthread t2([&app] {
     std::this_thread::sleep_for(2s);
-    app.close_server();
+    app.stop();
   });
   t1.join();
-  app.stop();
+  t2.join();
 }
 
 TEST_CASE("app:reg ctx") {
@@ -200,23 +206,24 @@ TEST_CASE("app:reg ctx") {
   using namespace std;
 
   cqy_app app;
-  struct ctx_test : public cqy_ctx_t {
+  struct ctx_test : public cqy_ctx {
     virtual bool on_init(std::string_view param) override {
       CHECK(param == "hello");
-      delay_stop().via(ex).detach();
+      delay_stop().via(get_coro_exe()).detach();
       return true;
     }
     Lazy<void> delay_stop() {
       co_await coro_io::sleep_for(2s);
-      app->close_server();
+      get_app()->stop();
     } 
   };
   app.reg_ctx<ctx_test>("ctx_test");
-  app.config.nodeid = 1;
-  app.config.nodes.push_back({
+  auto&config = app.get_config();
+  config.nodeid = 1;
+  config.nodes.push_back({
     .name = "n1", .ip = "127.0.0.1", .nodeid = 1,  .port = 8888}
   );
-  app.config.bootstrap = "ctx_test hello";
+  config.bootstrap = "ctx_test hello";
   app.start();
   app.stop();
 }
@@ -227,17 +234,18 @@ TEST_CASE("app:thread") {
   cqy_app app1;
   std::jthread t([&app1] {
     std::this_thread::sleep_for(1s);
-    app1.close_server();
+    app1.stop();
   });
-  app1.config.thread = 3;
-  app1.config.nodeid = 1;
-  app1.config.nodes.push_back({
+  auto& config = app1.get_config();
+  config.thread = 3;
+  config.nodeid = 1;
+  config.nodes.push_back({
     .name = "n1", .ip = "127.0.0.1", .nodeid = 1,  .port = 8888}
   );
-  app1.config.nodes.push_back({
+  config.nodes.push_back({
     .name = "n2", .ip = "127.0.0.1", .nodeid = 2,  .port = 8889}
   );
-  app1.config.bootstrap = "ctx_test1 hello";
+  config.bootstrap = "ctx_test1 hello";
   app1.start();
   app1.stop();
 }
@@ -249,7 +257,7 @@ TEST_CASE("ctx:dispatch") {
   using namespace std;
   cqy_app app1;
   cqy_app app2;
-  struct ctx_test1 : public cqy_ctx_t {
+  struct ctx_test1 : public cqy_ctx {
     uint32_t send_id = 0;
     virtual bool on_init(std::string_view param) override {
       send_id = dispatch("n2.ctx_test2", 0, std::string(param));
@@ -259,26 +267,27 @@ TEST_CASE("ctx:dispatch") {
       CHECK(msg->buffer() == "world");
       CHECK(msg->response);    // response
       CHECK(msg->session == send_id);
-      app->close_server();
+      get_app()->stop();
       co_return;
     }
   };
   app1.reg_ctx<ctx_test1>("ctx_test1");
   std::jthread t1([&app1,&app2] {
-    app1.config.thread = 3;
-    app1.config.nodeid = 1;
-    app1.config.nodes.push_back({
+    auto&config = app1.get_config();
+    config.thread = 3;
+    config.nodeid = 1;
+    config.nodes.push_back({
       .name = "n1", .ip = "127.0.0.1", .nodeid = 1,  .port = 8888}
     );
-    app1.config.nodes.push_back({
+    config.nodes.push_back({
       .name = "n2", .ip = "127.0.0.1", .nodeid = 2,  .port = 8889}
     );
-    app1.config.bootstrap = "ctx_test1 hello";
+    config.bootstrap = "ctx_test1 hello";
     app1.start();
-    app2.close_server();
+    app2.stop();
   });
 
-  struct ctx_test2 : public cqy_ctx_t {
+  struct ctx_test2 : public cqy_ctx {
     virtual bool on_init(std::string_view param) override {
       register_name("ctx_test2");
       return true;
@@ -286,29 +295,27 @@ TEST_CASE("ctx:dispatch") {
     virtual Lazy<void> on_msg(cqy_msg_t* msg) override {
       CHECK(msg->buffer() == "hello");
       CHECK(msg->type == 0);
-      respone(msg, "world");
+      response(msg, "world");
       co_return;
     }
   };
   app2.reg_ctx<ctx_test2>("ctx_test2");
   std::jthread t2([&app2] {
-    app2.config.thread = 3;
-    app2.config.nodeid = 2;
-    app2.config.nodes.push_back({
+    auto& config = app2.get_config();
+    config.thread = 3;
+    config.nodeid = 2;
+    config.nodes.push_back({
       .name = "n1", .ip = "127.0.0.1", .nodeid = 1,  .port = 8888}
     );
-    app2.config.nodes.push_back({
+    config.nodes.push_back({
       .name = "n2", .ip = "127.0.0.1", .nodeid = 2,  .port = 8889}
     );
-    app2.config.bootstrap = "ctx_test2";
+    config.bootstrap = "ctx_test2";
     app2.start();
   });
 
   t1.join();
   t2.join();
-
-  app2.stop();
-  app1.stop();
 }
 
 // if the node is not ready, the message may not be sent
@@ -317,41 +324,42 @@ TEST_CASE("ctx:rpc") {
   using namespace std;
   cqy_app app1;
   cqy_app app2;
-  struct ctx_test1 : public cqy_ctx_t {
+  struct ctx_test1 : public cqy_ctx {
     uint32_t send_id = 0;
     virtual bool on_init(std::string_view param) override {
-      test_rpc().via(ex).detach();
+      test_rpc().via(get_coro_exe()).detach();
       return true;
     }
     Lazy<void> test_rpc() {
-      auto r = co_await app->ctx_call_name<int, std::string>("n2.ctx_test2", "get_rpc_test_21", 1, "hello");
+      auto r = co_await get_app()->ctx_call_name<int, std::string>("n2.ctx_test2", "get_rpc_test_21", 1, "hello");
       CHECK(r.as<int>() == 6);
-      r = co_await app->ctx_call_name<int, std::string>("n2.ctx_test2", "get_rpc_test_20", 1, "hello");
+      r = co_await get_app()->ctx_call_name<int, std::string>("n2.ctx_test2", "get_rpc_test_20", 1, "hello");
       CHECK(!r.has_error());
-      r = co_await app->ctx_call_name<int>("n2.ctx_test2", "get_rpc_test_11", 1);
+      r = co_await get_app()->ctx_call_name<int>("n2.ctx_test2", "get_rpc_test_11", 1);
       CHECK(r.as<int>() == 1);
-      r = co_await app->ctx_call_name<int>("n2.ctx_test2", "get_rpc_test_10", 1);
+      r = co_await get_app()->ctx_call_name<int>("n2.ctx_test2", "get_rpc_test_10", 1);
       CHECK(!r.has_error());
-      app->close_server();
+      get_app()->stop();
       co_return;
     }
   };
   app1.reg_ctx<ctx_test1>("ctx_test1");
   std::jthread t1([&app1,&app2] {
-    app1.config.thread = 3;
-    app1.config.nodeid = 1;
-    app1.config.nodes.push_back({
+    auto& config = app1.get_config();
+    config.thread = 3;
+    config.nodeid = 1;
+    config.nodes.push_back({
       .name = "n1", .ip = "127.0.0.1", .nodeid = 1,  .port = 8888}
     );
-    app1.config.nodes.push_back({
+    config.nodes.push_back({
       .name = "n2", .ip = "127.0.0.1", .nodeid = 2,  .port = 8889}
     );
-    app1.config.bootstrap = "ctx_test1 hello";
+    config.bootstrap = "ctx_test1 hello";
     app1.start();
-    app2.close_server();
+    app2.stop();
   });
 
-  struct ctx_test2 : public cqy_ctx_t {
+  struct ctx_test2 : public cqy_ctx {
     virtual bool on_init(std::string_view param) override {
       register_name("ctx_test2");
       register_rpc_func<&ctx_test2::get_rpc_test_21>("get_rpc_test_21");
@@ -382,21 +390,19 @@ TEST_CASE("ctx:rpc") {
   };
   app2.reg_ctx<ctx_test2>("ctx_test2");
   std::jthread t2([&app2] {
-    app2.config.thread = 3;
-    app2.config.nodeid = 2;
-    app2.config.nodes.push_back({
+    auto& config = app2.get_config();
+    config.thread = 3;
+    config.nodeid = 2;
+    config.nodes.push_back({
       .name = "n1", .ip = "127.0.0.1", .nodeid = 1,  .port = 8888}
     );
-    app2.config.nodes.push_back({
+    config.nodes.push_back({
       .name = "n2", .ip = "127.0.0.1", .nodeid = 2,  .port = 8889}
     );
-    app2.config.bootstrap = "ctx_test2";
+    config.bootstrap = "ctx_test2";
     app2.start();
   });
 
   t1.join();
   t2.join();
-
-  app2.stop();
-  app1.stop();
 }

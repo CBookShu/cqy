@@ -5,7 +5,10 @@
 #include "async_simple/coro/SyncAwait.h"
 #include "cinatra/coro_http_connection.hpp"
 #include "cinatra/define.h"
-#include "cqy.h"
+#include "cqy_ctx.h"
+#include "cqy_app.h"
+#include "cqy_logger.h"
+#include "cqy_msg.h"
 #include "ylt/struct_pack.hpp"
 #include "ylt/thirdparty/async_simple/coro/Dispatch.h"
 #include <atomic>
@@ -25,7 +28,7 @@
 #include "msg_define.h"
 
 
-struct ws_server_t : public cqy::cqy_ctx_t {
+struct ws_server_t : public cqy::cqy_ctx {
   cqy::uptr<coro_http::coro_http_server> server;
   // guard by lock
   cqy::coro_spinlock lock;
@@ -79,7 +82,7 @@ struct ws_server_t : public cqy::cqy_ctx_t {
         CQY_ERROR("ws_server start error:{}", ec.message());
         return false;
       }
-      co_ws_start(std::move(start_f)).via(ex).detach();
+      co_ws_start(std::move(start_f)).via(get_coro_exe()).detach();
       CQY_INFO("ws_server init success:{}", param);
     } catch (const std::exception &e) {
       CQY_ERROR("ws_server init err:{} param:{}", e.what(), param);
@@ -145,7 +148,7 @@ struct ws_server_t : public cqy::cqy_ctx_t {
         to = new_alloc_nodectx;
         func = new_alloc_func;
       }
-      auto r = co_await app->ctx_call<>(to, func);
+      auto r = co_await get_app()->ctx_call<>(to, func);
       co_return r.as<uint64_t>();
     } catch (std::exception &e) {
       CQY_ERROR("ws alloc func error:{},{}", new_alloc_nodectx, new_alloc_func);
@@ -188,7 +191,7 @@ struct ws_server_t : public cqy::cqy_ctx_t {
     auto guard = lock.coLock();
     for(auto& sub:sub_ctxs) {
       if (!sub.second.func_on_start.empty()) {
-        app->ctx_call<uint64_t>(
+        get_app()->ctx_call<uint64_t>(
           sub.first, sub.second.func_on_start, connid
         ).start([](auto&&tr){});
       }
@@ -199,7 +202,7 @@ struct ws_server_t : public cqy::cqy_ctx_t {
     auto guard = lock.coLock();
     for(auto& sub:sub_ctxs) {
       if (!sub.second.func_on_read.empty()) {
-        app->ctx_call<uint64_t, std::string_view>(
+        get_app()->ctx_call<uint64_t, std::string_view>(
           sub.first, sub.second.func_on_read, connid, msg
         ).start([](auto&&tr){});
       }
@@ -210,7 +213,7 @@ struct ws_server_t : public cqy::cqy_ctx_t {
     auto guard = lock.coLock();
     for(auto& sub:sub_ctxs) {
       if (!sub.second.func_on_stop.empty()) {
-        app->ctx_call<uint64_t>(
+        get_app()->ctx_call<uint64_t>(
           sub.first, sub.second.func_on_stop, connid
         ).start([](auto&&tr){});
       }
@@ -265,7 +268,7 @@ struct ws_server_t : public cqy::cqy_ctx_t {
   }
 };
 
-struct gate_t : public cqy::cqy_ctx_t {
+struct gate_t : public cqy::cqy_ctx {
   std::atomic_int64_t conn_alloc = 0;
 
   struct player {
@@ -281,17 +284,17 @@ struct gate_t : public cqy::cqy_ctx_t {
     register_rpc_func<&gate_t::rpc_on_conn_start>("on_conn_start");
     register_rpc_func<&gate_t::rpc_on_msg>("on_msg");
     register_rpc_func<&gate_t::rpc_on_conn_stop>("on_conn_stop");
-    app->create_ctx("ws_server", param);
-    app->create_ctx("login", "");
+    get_app()->create_ctx("ws_server", param);
+    get_app()->create_ctx("login", "");
 
-    app->ctx_call_name<uint32_t, std::string>(
+    get_app()->ctx_call_name<uint32_t, std::string>(
       ".ws_server",
       "set_allocer",
-      id,"get_allocid").start([](auto&&){});
-    app->ctx_call_name<uint32_t, std::string, std::string, std::string>(
+      getid(),"get_allocid").start([](auto&&){});
+    get_app()->ctx_call_name<uint32_t, std::string, std::string, std::string>(
       ".ws_server",
       "sub",
-      id, "on_conn_start", "on_msg", "on_conn_stop"
+      getid(), "on_conn_start", "on_msg", "on_conn_stop"
     ).start([](auto&&tr){});
 
     return true;
@@ -331,7 +334,7 @@ struct gate_t : public cqy::cqy_ctx_t {
           dispatch_pack(".ws_server", 1, connid, msg_code_t::pack(rsp));
           ok = true;
         } else {
-          auto r = co_await app->ctx_call_name<uint64_t,std::string_view>(
+          auto r = co_await get_app()->ctx_call_name<uint64_t,std::string_view>(
             ".login", "player_login", connid, msg
           );
           auto rsp = r.as<game_def::MsgLoginResponce>();
@@ -366,7 +369,7 @@ struct gate_t : public cqy::cqy_ctx_t {
   }
 };
 
-struct ctx_login : public cqy::cqy_ctx_t {
+struct ctx_login : public cqy::cqy_ctx {
   struct login_t {
     std::string name;
     uint64_t connid;
@@ -410,7 +413,8 @@ int main() {
   app.reg_ctx<gate_t>("gate");
   app.reg_ctx<ctx_login>("login");
   app.load_config("config_game.json");
-  app.config.bootstrap = "gate 8,12349,server.crt,server.key,";
+  auto& config = app.get_config();
+  config.bootstrap = "gate 8,12349,server.crt,server.key,";
   app.start();
   app.stop();
   return 0;

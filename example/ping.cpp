@@ -1,24 +1,18 @@
 #include "cqy.h"
-#include "iguana/json_reader.hpp"
-#include "ylt/coro_io/coro_io.hpp"
 #include "ylt/easylog.hpp"
-#include "ylt/struct_pack.hpp"
 #include <cassert>
 #include <cstdint>
 #include <exception>
-#include <filesystem>
-#include <format>
-#include <thread>
 
 namespace cqy {
-struct node_ping : public cqy_ctx_t {
+struct node_ping : public cqy_ctx {
   uint32_t last_session = 0;
 
   virtual bool on_init(std::string_view param) override {
     CQY_INFO("param:{}", param);
-    app->ctx_mgr.register_name("ping", id);
+    register_name("ping");
 
-    test().via(this->ex).detach();
+    test().via(get_coro_exe()).detach();
     return true;
   }
 
@@ -27,7 +21,7 @@ struct node_ping : public cqy_ctx_t {
     assert(msg->response);
     CQY_INFO("from {:0x} msg:{}", msg->from, msg->buffer());
     co_await coro_io::sleep_for(std::chrono::seconds(1));
-    app->close_server();
+    get_app()->stop();
     co_return;
   }
 
@@ -42,11 +36,11 @@ struct node_ping : public cqy_ctx_t {
       func_name -> 是 node_pong register_rpc_func<&node_pong::rpc_pong>("rpc_pong");
       所以下面是在远程调用 node_pong::rpc_pong 函数，并把结果返回
       */
-      auto r = co_await app->ctx_call_name<std::string_view>(
+      auto r = co_await get_app()->ctx_call_name<std::string_view>(
           "n1.pong", "rpc_pong", "hello");
       CQY_INFO("rpc_pong res:{}", r.as<size_t>());
 
-      r = co_await app->ctx_call_name<std::string_view>("n1.pong", "rpc_pong1",
+      r = co_await get_app()->ctx_call_name<std::string_view>("n1.pong", "rpc_pong1",
                                                         "hello");
       assert(!r.has_error());
 

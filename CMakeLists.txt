@@ -7,6 +7,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(YLT_ENABLE_SSL ON)
 set(MSGPACK_USE_BOOST OFF)
 
+message(STATUS "CMAKE_CXX_COMPILER_ID IS ${CMAKE_CXX_COMPILER_ID}")
+message(STATUS "CMAKE_BUILD_TYPE IS ${CMAKE_BUILD_TYPE}")
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fcoroutines")
     if (CMAKE_CXX_COMPILER_VERSION MATCHES "12.*")
@@ -14,6 +16,12 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     endif()
     # sudo apt update && sudo apt upgrade -y
     # sudo apt install openssl libssl-dev libssl-doc
+    add_compile_options(-fsanitize=address -g)
+    link_libraries(asan)
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+        add_compile_options(-ftime-trace)
+    endif()
     add_compile_options(-fsanitize=address -g)
     link_libraries(asan)
 elseif()
@@ -24,8 +32,18 @@ endif()
 include_directories(3rd/yalantinglibs/src/include)
 link_libraries(yalantinglibs::yalantinglibs)
 
-add_library(cqy STATIC cqy.h cqy.cpp)
-target_include_directories(cqy PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+add_library(cqy STATIC 
+    include/cqy_utils.h include/cqy_logger.h
+    include/cqy_algo.h src/cqy_algo.cpp
+    include/cqy_ctx_mgr.h src/cqy_ctx_mgr.cpp
+    include/cqy_ctx.h src/cqy_ctx.cpp
+    include/cqy_node.h src/cqy_node.cpp
+    include/cqy_msg.h src/cqy_msg.cpp
+    include/cqy_handle.h
+    include/cqy_app.h src/cqy_app.cpp
+    # include/cqy.h  src/cqy.cpp
+)
+target_include_directories(cqy PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 link_libraries(cqy)
 add_executable(ping example/ping.cpp)
