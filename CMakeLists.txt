@@ -41,7 +41,7 @@ add_library(cqy STATIC
     include/cqy_msg.h src/cqy_msg.cpp
     include/cqy_handle.h
     include/cqy_app.h src/cqy_app.cpp
-    # include/cqy.h  src/cqy.cpp
+    include/cqy.h
 )
 target_include_directories(cqy PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
