@@ -1,3 +1,4 @@
+#include "cqy_algo.h"
 #include "cqy_utils.h"
 #include "msgpack/v3/object_fwd_decl.hpp"
 #include "ylt/coro_http/coro_http_server.hpp"
@@ -44,7 +45,7 @@ struct ws_server_t : public cqy::cqy_ctx {
   std::string new_alloc_func;
   struct ws_conn_t {
     cqy::wptr<cinatra::coro_http_connection> conn;
-    cqy::coro_spinlock lock;
+    cqy::coro_mutex lock;   // write buf
   };
   std::unordered_map<uint64_t, cqy::sptr<ws_conn_t>> conns;
   struct sub_info_t {
@@ -108,9 +109,11 @@ struct ws_server_t : public cqy::cqy_ctx {
       } else if(msg->type == 2) {
         // close
         auto connid = unpack<uint64_t>(msg->buffer());
-        auto conn = get_ws_con(connid);
+        auto conn = get_con(connid);
         if (conn) {
-          conn->close();
+          if (auto s = conn->conn.lock(); s) {
+            s->close();
+          }
         }
       }
     } catch(...) {
@@ -187,10 +190,10 @@ struct ws_server_t : public cqy::cqy_ctx {
     co_return;
   }
 
-  cqy::sptr<cinatra::coro_http_connection> get_ws_con(uint64_t connid) {
+  cqy::sptr<ws_conn_t> get_con(uint64_t connid) {
     auto guard = lock.coLock();
     if (auto it = conns.find(connid); it != conns.end()) {
-      return it->second->conn.lock();
+      return it->second;
     }
     return nullptr;
   }
@@ -257,11 +260,16 @@ struct ws_server_t : public cqy::cqy_ctx {
 
   cqy::Lazy<void> co_conn_write(uint64_t connid, std::string data) {
     try {
-      auto wscon = get_ws_con(connid);
+      auto conn = get_con(connid);
+      if (!conn) {
+        co_return;
+      }
+      auto wscon = conn->conn.lock();
       if (!wscon) {
         co_return;
       }
       co_await async_simple::coro::dispatch(wscon->get_executor());
+      auto guard = co_await conn->lock.coScopedLock();
       co_await wscon->write_websocket(data, cinatra::opcode::binary);
     } catch (std::exception &e) {
       CQY_ERROR("ws connid:{} write error:{}",connid, e.what());
@@ -408,7 +416,9 @@ struct gate_t : public cqy::cqy_ctx {
       if (head.id == game_def::Login) {
         co_return co_await co_login(connid, codec, msg);
       } else {
-        dispatch(".game", 0, msg);
+        co_await get_app()->ctx_call_name<uint64_t, std::string_view>(
+          ".game", "on_client", connid, msg
+        );
       }
     } catch(std::exception& e) {
       CQY_ERROR("connid:{} exception:{}", connid, e.what());
@@ -556,16 +566,22 @@ struct world_t : public cqy::cqy_ctx {
   }
 };
 
+// 一个游戏副本
+struct scene_t {
+
+};
+
 struct game_t : public cqy::cqy_ctx {
   struct player {
     std::string name;
   };
   std::unordered_map<uint64_t, player> players;
-  std::unordered_map<std::string, uint64_t> name2id;
+  std::unordered_map<std::string, uint64_t, cqy::string_hash, std::equal_to<>> name2id;
 
   virtual bool on_init(std::string_view param) { 
     register_name("game");
     register_rpc_func<&game_t::rpc_add_player>("add_player");
+    register_rpc_func<&game_t::rpc_on_client>("on_client");
     return true; 
   }
   virtual cqy::Lazy<void> on_msg(cqy::cqy_msg_t *msg) { 
@@ -594,6 +610,27 @@ struct game_t : public cqy::cqy_ctx {
     };
     name2id[login.name] = connid;
     co_return;
+  }
+
+  cqy::Lazy<void> rpc_on_client(uint64_t connid, std::string_view msg) {
+    try {
+      msg_code_t codec;
+      codec.unpack(msg);
+      auto head = codec.head();
+      if(head.id == game_def::EnterSingleScene) {
+        on_recv(connid, codec.as<game_def::MsgEnterSingleScene>());
+      } else {
+        CQY_INFO("connid msgid:{}", cqy::algo::to_underlying(head.id));
+      }
+    } catch(...) {
+
+    }
+    co_return;
+  }
+
+  void on_recv(uint64_t connid, game_def::MsgEnterSingleScene msg) {
+    auto& p = players.at(connid);
+    
   }
 };
 
