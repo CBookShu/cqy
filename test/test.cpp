@@ -213,7 +213,7 @@ TEST_CASE("app:reg ctx") {
       return true;
     }
     Lazy<void> delay_stop() {
-      co_await coro_io::sleep_for(2s);
+      co_await get_app()->co_sleep(1s);
       get_app()->stop();
     } 
   };

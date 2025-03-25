@@ -1,19 +1,43 @@
  #pragma once
  #include "msgpack/v3/object_fwd_decl.hpp"
+#include "ylt/reflection/user_reflect_macro.hpp"
 #include <cstdint>
 #include <msgpack.hpp>
+#include <vector>
 
 namespace game_def {
   enum MsgId {
     MsgId_Invalid_0,
-    Login,
-  
+    Login = 1,
+    
+    EnterSingleScene = 24,
+
+    MsgOnlie = 40,
+    FromGame = 41,
+    FromWorld = 42,
+    BuildingCenter = 43,
+    PlaySound = 44,
   };
 
   enum ObjectType {
     Object_Invalid_0,
 
 
+  };
+
+  enum SceneID
+  {
+    SingleScene_MIN,
+    TrainScene = 1,   //训练战,
+    DefendScene = 2,  //防守战,
+    AttackScene = 3,  //攻坚战,
+    SingleScnen_MAX,
+
+    MultiScene_MIN = 100,
+    SquareScene,    //四方对战,
+    MultiScene_MAX = 200, //多人ID_非法_MAX,
+
+    MultiOnlineScene,
   };
 
   struct MsgHead {
@@ -44,10 +68,38 @@ namespace game_def {
     std::string tip;
     MSGPACK_DEFINE(head, result, tip);
   };
+
+  
+  struct MsgOnline {
+    MsgHead head;
+    uint16_t u16count;
+    std::vector<std::string> vecPlayerNickName;
+    MSGPACK_DEFINE(head, u16count, vecPlayerNickName);
+  };
+
+  struct MsgFromWorld {
+    MsgHead head;
+    std::vector<uint8_t> vecByte;
+    MSGPACK_DEFINE(head, vecByte);
+  };
+
+  struct MsgFromGame {
+    MsgHead head;
+    std::vector<uint8_t> vecByte;
+    MSGPACK_DEFINE(head, vecByte);
+  };
+
+  struct MsgEnterSingleScene {
+    MsgHead head;
+    SceneID id;
+    MSGPACK_DEFINE(head, id);
+  };
+
 }
 
 MSGPACK_ADD_ENUM(game_def::MsgId);
 MSGPACK_ADD_ENUM(game_def::ObjectType);
+MSGPACK_ADD_ENUM(game_def::SceneID);
 MSGPACK_ADD_ENUM(game_def::MsgLoginResponce::Error);
 
 struct msg_code_t {

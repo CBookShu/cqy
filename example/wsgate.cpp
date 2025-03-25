@@ -1,3 +1,4 @@
+#include "cqy_utils.h"
 #include "msgpack/v3/object_fwd_decl.hpp"
 #include "ylt/coro_http/coro_http_server.hpp"
 #include "ylt/coro_io/coro_io.hpp"
@@ -11,20 +12,27 @@
 #include "cqy_msg.h"
 #include "ylt/struct_pack.hpp"
 #include "ylt/thirdparty/async_simple/coro/Dispatch.h"
+#include <algorithm>
 #include <atomic>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <filesystem>
 #include <format>
+#include <functional>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 #include <tuple>
+#include <unistd.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 #include "msg_define.h"
 
 
@@ -191,8 +199,8 @@ struct ws_server_t : public cqy::cqy_ctx {
     auto guard = lock.coLock();
     for(auto& sub:sub_ctxs) {
       if (!sub.second.func_on_start.empty()) {
-        get_app()->ctx_call<uint64_t>(
-          sub.first, sub.second.func_on_start, connid
+        get_app()->ctx_call<uint32_t, uint64_t>(
+          sub.first, sub.second.func_on_start, getid(), connid
         ).start([](auto&&tr){});
       }
     }
@@ -256,6 +264,7 @@ struct ws_server_t : public cqy::cqy_ctx {
       co_await async_simple::coro::dispatch(wscon->get_executor());
       co_await wscon->write_websocket(data, cinatra::opcode::binary);
     } catch (std::exception &e) {
+      CQY_ERROR("ws connid:{} write error:{}",connid, e.what());
     }
   }
 
@@ -269,14 +278,29 @@ struct ws_server_t : public cqy::cqy_ctx {
 };
 
 struct gate_t : public cqy::cqy_ctx {
+  enum write_type {
+    none = 0,
+    write = 1,
+    close = 2,
+
+    broad = 3,
+  };
+
   std::atomic_int64_t conn_alloc = 0;
 
   struct player {
     bool login = false;
+    uint32_t from;
     uint64_t connid;
+    uint32_t send_sign;
+    uint32_t recv_sign;
   };
   std::unordered_map<uint64_t, player> players;
+  uint32_t world_id = 0;
+  uint32_t game_id = 0;
 
+  static constexpr int nVerMax = 8;
+  static constexpr int nVerMin = 0;
 
   virtual bool on_init(std::string_view param) {
     register_name("gate");
@@ -285,7 +309,10 @@ struct gate_t : public cqy::cqy_ctx {
     register_rpc_func<&gate_t::rpc_on_msg>("on_msg");
     register_rpc_func<&gate_t::rpc_on_conn_stop>("on_conn_stop");
     get_app()->create_ctx("ws_server", param);
-    get_app()->create_ctx("login", "");
+    world_id = get_app()->create_ctx("world", "");
+    assert(world_id != 0);
+    game_id = get_app()->create_ctx("game", "");
+    assert(game_id != 0);
 
     get_app()->ctx_call_name<uint32_t, std::string>(
       ".ws_server",
@@ -300,62 +327,92 @@ struct gate_t : public cqy::cqy_ctx {
     return true;
   }
 
-  cqy::Lazy<uint64_t> rpc_get_allocid() { co_return ++conn_alloc; }
+  virtual cqy::Lazy<void> on_msg(cqy::cqy_msg_t *msg) override { 
+    try {
+      if (msg->type == write) {
+        auto [connid, str] = unpack<uint64_t, std::string_view>(msg->buffer());
+        if (msg->from == world_id) {
+          game_def::MsgFromWorld w;
+          w.head.id = game_def::FromWorld;
+          std::ranges::copy(str, std::back_inserter(w.vecByte));
+          write_rsp(connid, w);
+        } else if(msg->from == game_id){
+          game_def::MsgFromGame w;
+          w.head.id = game_def::FromGame;
+          std::ranges::copy(str, std::back_inserter(w.vecByte));
+          write_rsp(connid, w);
+        }
+      } else if(msg->type == broad) {
+        auto str = unpack<std::string>(msg->buffer());
+        for(auto& it:players) {
+          if (msg->from == world_id) {
+            game_def::MsgFromWorld w;
+            w.head.id = game_def::FromWorld;
+            std::ranges::copy(str, std::back_inserter(w.vecByte));
+            write_rsp(it.first, w);
+          } else if(msg->from == game_id){
+            game_def::MsgFromGame w;
+            w.head.id = game_def::FromGame;
+            std::ranges::copy(str, std::back_inserter(w.vecByte));
+            write_rsp(it.first, w);
+          }
+        }
+      }
+    } catch(...) {
 
-  void write(uint64_t connid, const std::string& msg) {
-    std::string data;
-    struct_pack::serialize_to(data, connid, msg);
-    dispatch(".ws_server", 1, data);
+    }
+    co_return; 
   }
 
-  cqy::Lazy<void> rpc_on_conn_start(uint64_t connid) { 
+  cqy::Lazy<uint64_t> rpc_get_allocid() { co_return ++conn_alloc; }
+
+  template<typename... Args>
+  void write_pack(uint64_t connid, uint32_t from, uint8_t t, Args&&... args) {
+    dispatch_pack(from, t, connid, std::forward<Args>(args)...);    
+  }
+
+  template <typename Arg>
+  void write_rsp(uint64_t connid, Arg&&arg) {
+    if (auto it = players.find(connid); it != players.end()) {
+      ++it->second.recv_sign;
+      arg.head.sn = it->second.recv_sign;
+      write_pack(connid, it->second.from, write_type::write, msg_code_t::pack(std::forward<Arg>(arg)));
+    }
+  }
+
+  void close_con(uint64_t connid) {
+    if (auto it = players.find(connid); it != players.end()) {
+      write_pack(connid, it->second.from, write_type::close);
+    }
+  }
+
+
+  cqy::Lazy<void> rpc_on_conn_start(uint32_t from, uint64_t connid) { 
     CQY_INFO("conn id:{} start", connid);
     players[connid] = {
       .login = false,
-      .connid = connid
+      .from = from,
+      .connid = connid,
+      .send_sign = 0,
+      .recv_sign = 0,
     };
     co_return; 
   }
 
   cqy::Lazy<void> rpc_on_msg(uint64_t connid, std::string_view msg) { 
     CQY_INFO("conn id:{} msg:{}", connid, msg);
-    bool ok = false;
     try {
       msg_code_t codec;
       codec.unpack(msg);
       auto head = codec.head();
       if (head.id == game_def::Login) {
-        auto& p = players.at(connid);
-        if (p.login) {
-          // already login
-          game_def::MsgLoginResponce rsp;
-          rsp.head.id = game_def::MsgId::Login;
-          rsp.result = game_def::MsgLoginResponce::Busy;
-          dispatch_pack(".ws_server", 1, connid, msg_code_t::pack(rsp));
-          ok = true;
-        } else {
-          auto r = co_await get_app()->ctx_call_name<uint64_t,std::string_view>(
-            ".login", "player_login", connid, msg
-          );
-          auto rsp = r.as<game_def::MsgLoginResponce>();
-          if (rsp.result == game_def::MsgLoginResponce::Ok) {
-            p.login = true;
-            ok = true;
-          }else {
-            ok = false;
-          }
-          dispatch_pack(".ws_server", 1, connid, msg_code_t::pack(rsp));
-        }
+        co_return co_await co_login(connid, codec, msg);
       } else {
         dispatch(".game", 0, msg);
-        ok = true;
       }
     } catch(std::exception& e) {
-      
-    }
-    if(!ok) {
-      // close this player
-      dispatch_pack(".ws_server", 2, connid);
+      CQY_ERROR("connid:{} exception:{}", connid, e.what());
+      close_con(connid);
     }
     co_return; 
   }
@@ -363,41 +420,133 @@ struct gate_t : public cqy::cqy_ctx {
   cqy::Lazy<void> rpc_on_conn_stop(uint64_t connid) { 
     CQY_INFO("conn id:{} stop", connid);
     auto& p = players[connid];
-    dispatch_pack(".login", 2, connid);
-    dispatch_pack(".game", 2, connid);
+    dispatch_pack(world_id, close, connid);
+    dispatch_pack(game_id, close, connid);
+    players.erase(connid);
     co_return; 
+  }
+
+  // 
+  cqy::Lazy<void> co_login(uint64_t connid, msg_code_t& codec, std::string_view msg) {
+    auto& p = players.at(connid);
+    if (p.login) {
+      // already login
+      game_def::MsgLoginResponce rsp;
+      rsp.head.id = game_def::Login;
+      rsp.result = game_def::MsgLoginResponce::Ok;
+      write_rsp(connid, rsp);
+      co_return;
+    }
+
+    auto head = codec.head();
+    p.send_sign++;
+    if(p.send_sign != head.sn) {
+      // sn error close direct
+      CQY_ERROR("connid:{} send sign error", connid);
+      close_con(connid);
+      co_return;
+    }
+
+    auto login = codec.as<game_def::MsgLogin>();
+    // check version
+    if (login.uVer < nVerMin || login.uVer > nVerMax) {
+      game_def::MsgLoginResponce rsp;
+      rsp.head.id = game_def::Login;
+      rsp.result = game_def::MsgLoginResponce::VerionErr;
+
+      write_rsp(connid, rsp);
+      close_con(connid);
+      co_return;
+    }
+
+    // send to login ctx
+    auto r = co_await get_app()->ctx_call_name<uint64_t,game_def::MsgLogin>(
+      ".world", "player_login", connid, login
+    );
+
+    auto rsp = r.as<game_def::MsgLoginResponce>();
+    write_rsp(connid, rsp);
+    if (rsp.result == game_def::MsgLoginResponce::Ok) {
+      p.login = true;
+
+      co_await get_app()->ctx_call_name<uint64_t,game_def::MsgLogin>(
+        ".game", "add_player", connid, login
+      );
+
+    } else {
+      // login error
+      close_con(connid);
+    }
+    co_return;
   }
 };
 
-struct ctx_login : public cqy::cqy_ctx {
+struct world_t : public cqy::cqy_ctx {
   struct login_t {
     std::string name;
     uint64_t connid;
   };
   std::unordered_map<uint64_t, login_t> logins;
+  std::unordered_map<std::string, uint64_t,cqy::string_hash, std::equal_to<>> name2conid;
 
   virtual bool on_init(std::string_view param) { 
-    register_name("login");
-    register_rpc_func<&ctx_login::rpc_player_login>("player_login");
+    register_name("world");
+    register_rpc_func<&world_t::rpc_player_login>("player_login");
     return true; 
   }
-  virtual cqy::Lazy<void> on_msg(cqy::cqy_msg_t *msg) { co_return; }
+  virtual cqy::Lazy<void> on_msg(cqy::cqy_msg_t *msg) { 
+    try {
+      if (msg->type == gate_t::close) {
+        auto connid = unpack<uint64_t>(msg->buffer());
+        if (auto it = logins.find(connid); it != logins.end()) {
+          name2conid.erase(it->second.name);
+          logins.erase(it);
+        }
+      }
+    } catch(...) {
+
+    }
+    co_return; 
+  }
   virtual void on_stop() {}
 
+  template <typename Arg>
+  void write_notify(uint64_t connid, Arg&&arg) {
+    dispatch_pack(".gate", gate_t::write, connid, msg_code_t::pack(std::forward<Arg>(arg)));
+  }
+
+  template <typename Arg>
+  void broad_notify(Arg&&arg) {
+    dispatch_pack(".gate", gate_t::broad, msg_code_t::pack(std::forward<Arg>(arg)));
+  }
+
   cqy::Lazy<game_def::MsgLoginResponce> rpc_player_login(
-    uint64_t connid, std::string_view msg
+    uint64_t connid, game_def::MsgLogin login
   ) {
     game_def::MsgLoginResponce rsp{};
     rsp.head.id = game_def::Login;
     rsp.result = game_def::MsgLoginResponce::Ok;
     try {
-      msg_code_t codec;
-      codec.unpack(msg);
-      auto login = codec.as<game_def::MsgLogin>();
+      if (auto it = name2conid.find(login.name); it != name2conid.end()) {
+        // 重复登录，踢掉老的那个
+        dispatch_pack(".gate", gate_t::close, it->second);
+        name2conid.erase(it);
+      }
+
+      name2conid[login.name] = connid;
       logins[connid] = {
         .name = std::move(login.name),
         .connid = connid
       };
+
+      // notify onlie 
+      game_def::MsgOnline online;
+      online.head.id = game_def::MsgId::MsgOnlie;
+      online.u16count = logins.size();
+      for(auto& u:logins) {
+        online.vecPlayerNickName.push_back(u.second.name);
+      }
+      broad_notify(online);
       co_return rsp;
     } catch(std::exception& e) {
       rsp.result = game_def::MsgLoginResponce::PwdErr;
@@ -407,11 +556,53 @@ struct ctx_login : public cqy::cqy_ctx {
   }
 };
 
+struct game_t : public cqy::cqy_ctx {
+  struct player {
+    std::string name;
+  };
+  std::unordered_map<uint64_t, player> players;
+  std::unordered_map<std::string, uint64_t> name2id;
+
+  virtual bool on_init(std::string_view param) { 
+    register_name("game");
+    register_rpc_func<&game_t::rpc_add_player>("add_player");
+    return true; 
+  }
+  virtual cqy::Lazy<void> on_msg(cqy::cqy_msg_t *msg) { 
+    try {
+      if (msg->type == gate_t::close) {
+        auto connid = unpack<uint64_t>(msg->buffer());
+        if(auto it = players.find(connid); it != players.end()) {
+          name2id.erase(it->second.name);
+          players.erase(it);
+        }
+      }
+    } catch(...) {
+      
+    }
+    co_return; 
+  }
+  virtual void on_stop() {}
+
+  cqy::Lazy<void> rpc_add_player(uint64_t connid, game_def::MsgLogin login) {
+    if (auto it = name2id.find(login.name); it != name2id.end()) {
+      players.erase(it->second);
+      name2id.erase(it);
+    }
+    players[connid] = {
+      .name = login.name
+    };
+    name2id[login.name] = connid;
+    co_return;
+  }
+};
+
 int main() {
   cqy::cqy_app app;
   app.reg_ctx<ws_server_t>("ws_server");
   app.reg_ctx<gate_t>("gate");
-  app.reg_ctx<ctx_login>("login");
+  app.reg_ctx<world_t>("world");
+  app.reg_ctx<game_t>("game");
   app.load_config("config_game.json");
   auto& config = app.get_config();
   config.bootstrap = "gate 8,12349,server.crt,server.key,";
