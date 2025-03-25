@@ -406,3 +406,77 @@ TEST_CASE("ctx:rpc") {
   t1.join();
   t2.join();
 }
+
+// find ctx id
+TEST_CASE("ctx:find_ctx") {
+  using namespace cqy;
+  using namespace std;
+  cqy_app app1;
+  cqy_app app2;
+  static uint32_t ctx1_id = 0;
+  static uint32_t ctx2_id = 0;
+  struct ctx_test1 : public cqy_ctx {
+    uint32_t send_id = 0;
+    virtual bool on_init(std::string_view param) override {
+      ctx1_id = getid();
+      register_name("ctx_test1");
+      async_call(test());
+      return true;
+    }
+    Lazy<void> test() {
+      auto r = co_await get_app()->rpc_find_ctx("n2.ctx_test2"sv);
+      CHECK(r == ctx2_id);
+      co_await get_app()->co_sleep(2s);
+      get_app()->stop();
+      co_return;
+    }
+  };
+  app1.reg_ctx<ctx_test1>("ctx_test1");
+  std::jthread t1([&app1,&app2] {
+    auto& config = app1.get_config();
+    config.thread = 3;
+    config.nodeid = 1;
+    config.nodes.push_back({
+      .name = "n1", .ip = "127.0.0.1", .nodeid = 1,  .port = 8888}
+    );
+    config.nodes.push_back({
+      .name = "n2", .ip = "127.0.0.1", .nodeid = 2,  .port = 8889}
+    );
+    config.bootstrap = "ctx_test1 hello";
+    app1.start();
+  });
+
+  struct ctx_test2 : public cqy_ctx {
+    virtual bool on_init(std::string_view param) override {
+      register_name("ctx_test2");
+      ctx2_id = getid();
+      async_call(test());
+      return true;
+    }
+
+    Lazy<void> test() {
+      co_await get_app()->co_sleep(1s);
+      auto id = co_await get_app()->rpc_find_ctx("n1.ctx_test1"sv);
+      CHECK(id == ctx1_id);
+      get_app()->stop();
+      co_return;
+    }
+  };
+  app2.reg_ctx<ctx_test2>("ctx_test2");
+  std::jthread t2([&app2] {
+    auto& config = app2.get_config();
+    config.thread = 3;
+    config.nodeid = 2;
+    config.nodes.push_back({
+      .name = "n1", .ip = "127.0.0.1", .nodeid = 1,  .port = 8888}
+    );
+    config.nodes.push_back({
+      .name = "n2", .ip = "127.0.0.1", .nodeid = 2,  .port = 8889}
+    );
+    config.bootstrap = "ctx_test2";
+    app2.start();
+  });
+
+  t1.join();
+  t2.join();
+}

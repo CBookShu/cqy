@@ -1,9 +1,13 @@
 #pragma once
+#include "async_simple/Executor.h"
+#include "async_simple/coro/Dispatch.h"
 #include "cqy_algo.h"
 #include "cqy_handle.h"
 #include "cqy_node.h"
 #include "cqy_utils.h"
+#include "ylt/coro_io/coro_io.hpp"
 #include "ylt/reflection/template_string.hpp"
+#include <chrono>
 #include <string_view>
 
 namespace cqy {
@@ -46,7 +50,10 @@ public:
   auto get_handle(std::string_view name)
       -> optv<std::pair<cqy_handle_t, std::string_view>>;
 
-  Lazy<void> rpc_on_mq(std::deque<std::string> msgs);
+  void rpc_on_mq(std::deque<std::string> msgs);
+
+  Lazy<uint32_t> rpc_find_ctx(std::string_view nodectx);
+
   Lazy<rpc_result_t> rpc_ctx_call(uint32_t to, std::string_view func_name,
                                   std::string_view param_data);
   Lazy<rpc_result_t> rpc_ctx_call_name(std::string_view nodectx,
@@ -60,6 +67,9 @@ public:
   template <typename... fArgs, typename... Args>
   Lazy<rpc_result_t> ctx_call_name(std::string_view nodectx,
                                    std::string_view func_name, Args &&...args);
+
+  template <typename R, typename P>
+  Lazy<void> co_sleep(std::chrono::duration<R, P> s);
 
   void node_mq_push(std::string msg);
 
@@ -76,8 +86,17 @@ public:
     };
   }
 
-  void create_ctx(std::string_view name, std::string_view param);
+  uint32_t create_ctx(std::string_view name, std::string_view param);
+  void stop_ctx(std::string_view name);
+  void stop_ctx(uint32_t id);
 };
+
+template <typename R, typename P>
+Lazy<void> cqy_app::co_sleep(std::chrono::duration<R, P> s) {
+  auto ex = co_await async_simple::CurrentExecutor();
+  co_await coro_io::sleep_for(s);
+  co_await async_simple::coro::dispatch(ex);
+}
 
 template <typename... fArgs, typename... Args>
 Lazy<rpc_result_t> cqy_app::ctx_call_name(std::string_view nodectx,
@@ -92,7 +111,7 @@ Lazy<rpc_result_t> cqy_app::ctx_call_name(std::string_view nodectx,
   }
   auto nodeid = p->first.node();
   auto ctx_name = p->second;
-  auto& config = get_config();
+  auto &config = get_config();
   if (nodeid == config.nodeid) {
     std::string param;
     rpc_encode<fArgs...>(param, std::forward<Args>(args)...);
@@ -107,12 +126,15 @@ Lazy<rpc_result_t> cqy_app::ctx_call_name(std::string_view nodectx,
     std::string param;
     rpc_encode<fArgs...>(param, std::forward<Args>(args)...);
 
+    auto ex = co_await async_simple::CurrentExecutor();
     auto r = co_await n->rpc_client->send_request(
         [&](coro_rpc::coro_rpc_client &client)
             -> Lazy<coro_rpc::rpc_result<rpc_result_t>> {
           co_return co_await client.call<&cqy_app::rpc_ctx_call_name>(
               nodectx, func_name, param);
         });
+    co_await async_simple::coro::dispatch(ex);
+
     if (!r) {
       result.status = -4;
       // result.res = r.error();
@@ -133,7 +155,7 @@ Lazy<rpc_result_t> cqy_app::ctx_call(uint32_t to, std::string_view func_name,
                                      Args &&...args) {
   cqy_handle_t h(to);
   rpc_result_t result{};
-  auto& config = get_config();
+  auto &config = get_config();
   if (h.nodeid == config.nodeid) {
     std::string param;
     rpc_encode<fArgs...>(param, std::forward<Args>(args)...);
@@ -148,12 +170,15 @@ Lazy<rpc_result_t> cqy_app::ctx_call(uint32_t to, std::string_view func_name,
     std::string param;
     rpc_encode<fArgs...>(param, std::forward<Args>(args)...);
 
+    auto ex = co_await async_simple::CurrentExecutor();
     auto r = co_await n->rpc_client->send_request(
         [&](coro_rpc::coro_rpc_client &client)
             -> Lazy<coro_rpc::rpc_result<rpc_result_t>> {
           co_return co_await client.call<&cqy_app::rpc_ctx_call>(to, func_name,
                                                                  param);
         });
+    co_await async_simple::coro::dispatch(ex);
+
     if (!r) {
       result.status = -4;
       /*result.res = r.error();*/

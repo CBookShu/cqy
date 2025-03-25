@@ -105,11 +105,12 @@ template <typename T> struct cqy_cv_queue_t {
   async_simple::coro::ConditionVariable<async_simple::coro::Mutex> cv;
   std::atomic<bool> stop{false};
 
-  void shutdown() {
+  bool shutdown() {
     if (stop.exchange(true)) {
-      return;
+      return false;
     }
     cv.notifyAll();
+    return true;
   }
 
   async_simple::coro::Lazy<size_t> size() {

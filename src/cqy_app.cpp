@@ -1,14 +1,22 @@
 #include "cqy_app.h"
+#include "async_simple/Executor.h"
+#include "async_simple/coro/Dispatch.h"
 #include "cqy_ctx.h"
 #include "cqy_ctx_mgr.h"
 #include "cqy_handle.h"
 #include "cqy_logger.h"
 #include "cqy_msg.h"
 #include "cqy_node.h"
+#include "cqy_utils.h"
 #include "iguana/json_reader.hpp"
+#include "ylt/coro_io/io_context_pool.hpp"
 #include <atomic>
+#include <cassert>
+#include <cstdint>
 #include <format>
+#include <latch>
 #include <stdexcept>
+#include <thread>
 
 using namespace cqy;
 
@@ -57,20 +65,25 @@ void cqy_app::start() {
   rpc_server.register_handler<&cqy_app::rpc_on_mq>(this);
   rpc_server.register_handler<&cqy_app::rpc_ctx_call>(this);
   rpc_server.register_handler<&cqy_app::rpc_ctx_call_name>(this);
+  rpc_server.register_handler<&cqy_app::rpc_find_ctx>(this);
 
+  auto f = s_->node.rpc_server_start();
   if (!s_->config.bootstrap.empty()) {
     auto p = algo::split_one(s_->config.bootstrap, " ");
     create_ctx(p.first, p.second);
   }
   // will block here
-  s_->node.rpc_server_start();
+  auto ec = std::move(f).get();
+  if (ec) {
+    CQY_WARN("node server stop: {}", ec.message());
+  }
   // clear
   s_->node.shutdown();
   auto ctxids = s_->ctx_mgr.collect_ctxids();
   for (auto id : ctxids) {
     auto ctx = s_->ctx_mgr.get_ctx(id);
     if (ctx) {
-      ctx->shutdown();
+      ctx->shutdown(true);
     }
   }
 }
@@ -130,12 +143,12 @@ void cqy_app::node_mq_push(std::string msg) {
   }
 }
 
-Lazy<void> cqy_app::rpc_on_mq(std::deque<std::string> msgs) {
+void cqy_app::rpc_on_mq(std::deque<std::string> msgs) {
   for (auto &msg : msgs) {
     auto cqy_msg = cqy_msg_t::parse(msg, true);
     if (!cqy_msg) {
       CQY_ERROR("rpc_on_mq msg error");
-      co_return;
+      return ;
     }
     auto to = cqy_msg->to;
     auto name = cqy_msg->name();
@@ -149,6 +162,53 @@ Lazy<void> cqy_app::rpc_on_mq(std::deque<std::string> msgs) {
       cqy_handle_t ch(to);
       CQY_ERROR("rpc_on_mq to:{:0x} can`t find", ch.id);
     }
+  }
+}
+
+Lazy<uint32_t> cqy_app::rpc_find_ctx(std::string_view nodectx) {
+  auto p = get_handle(nodectx);
+  if (!p) {
+    CQY_WARN("can`t find id by:{}", nodectx);
+    co_return 0;
+  }
+
+  auto& config = get_config();
+  if (config.nodeid == p->first.node()) {
+    // self
+    auto id = s_->ctx_mgr.find_name(p->second);
+    if (id == 0) {
+      CQY_WARN("can`t find ctx by:{}", nodectx);
+      co_return 0;
+    }
+    co_return id;
+  } else {
+    // remote
+    auto node = s_->node.get_node(p->first.node());
+    if (!node || !node->rpc_client) {
+      CQY_WARN("can`t find node by:{}", nodectx);
+      co_return 0;
+    }
+
+    auto ex = co_await async_simple::CurrentExecutor();
+    auto r = co_await node->rpc_client->send_request(
+      [&](coro_rpc::coro_rpc_client &client)
+          -> Lazy<coro_rpc::rpc_result<uint32_t>> {
+        co_return co_await client.call<&cqy_app::rpc_find_ctx>(
+            nodectx);
+      });
+    co_await async_simple::coro::dispatch(ex);
+
+    if (!r) {
+      auto ec = std::make_error_code(r.error());
+      CQY_WARN("node:{} remote call error:{}", nodectx, ec.message());
+      co_return 0;
+    }
+
+    if (!r.value()) {
+      CQY_WARN("node:{} remote call result err:{}", nodectx, r.value().error().msg);
+      co_return 0;
+    }
+    co_return r.value().value();
   }
 }
 
@@ -171,7 +231,9 @@ Lazy<rpc_result_t> cqy_app::rpc_ctx_call(uint32_t to,
     co_return result;
   }
 
+  auto ex = co_await async_simple::CurrentExecutor();
   auto ok = co_await ctx->rpc_on_call(func_name, param_data, result);
+  co_await async_simple::coro::dispatch(ex);
   if (ok) {
     co_return result;
   }
@@ -203,8 +265,9 @@ Lazy<rpc_result_t> cqy_app::rpc_ctx_call_name(std::string_view nodectx,
     result.res = std::format("nodectx:{} ctx miss", nodectx);
     co_return result;
   }
-
+  auto ex = co_await async_simple::CurrentExecutor();
   auto ok = co_await ctx->rpc_on_call(func_name, param_data, result);
+  co_await async_simple::coro::dispatch(ex);
   if (ok) {
     co_return result;
   }
@@ -213,7 +276,7 @@ Lazy<rpc_result_t> cqy_app::rpc_ctx_call_name(std::string_view nodectx,
   co_return result;
 }
 
-void cqy_app::create_ctx(std::string_view name, std::string_view param) {
+uint32_t cqy_app::create_ctx(std::string_view name, std::string_view param) {
   sptr<cqy_ctx> ctx;
   if (auto it = creator_.ctx_creator.find(name);
       it != creator_.ctx_creator.end()) {
@@ -221,7 +284,7 @@ void cqy_app::create_ctx(std::string_view name, std::string_view param) {
   }
   if (!ctx) {
     CQY_ERROR("ctx:{} create error", name);
-    return;
+    return 0;
   }
   cqy_handle_t h;
   h.set_ctxid(s_->ctx_mgr.new_id());
@@ -231,9 +294,27 @@ void cqy_app::create_ctx(std::string_view name, std::string_view param) {
 
   if (!ctx->on_init(param)) {
     CQY_ERROR("ctx:{} init error", name);
-    return;
+    return 0;
   }
   // begin receive msg
   s_->ctx_mgr.add_ctx(ctx);
-  ctx->wait_msg_spawn().via(ex).detach();
+  ctx->wait_msg_spawn(ctx).via(ex).detach();
+  return h;
+}
+
+void cqy_app::stop_ctx(std::string_view name) {
+  auto id = s_->ctx_mgr.find_name(name);
+  auto ctx = s_->ctx_mgr.get_ctx(id);
+  if (ctx) {
+    s_->ctx_mgr.del_ctx(id);
+    ctx->shutdown(false);
+  }
+}
+
+void cqy_app::stop_ctx(uint32_t id) {
+  auto ctx = s_->ctx_mgr.get_ctx(id);
+  if (ctx) {
+    s_->ctx_mgr.del_ctx(id);
+    ctx->shutdown(false);
+  }
 }

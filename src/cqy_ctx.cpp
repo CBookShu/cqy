@@ -1,4 +1,5 @@
 #include "cqy_ctx.h"
+#include "async_simple/coro/Dispatch.h"
 #include "cqy_app.h"
 #include <memory>
 #include <latch>
@@ -83,11 +84,22 @@ void cqy_ctx::response(cqy_msg_t *msg, std::string_view data) {
   s_->app->node_mq_push(std::move(s));
 }
 
+void cqy_ctx::async_call(Lazy<void> task) {
+  std::move(task)
+  .via(get_coro_exe())
+  .start([s = shared_from_this()](auto&& t){
+  });
+}
+
+Lazy<void> cqy_ctx::ctx_switch() {
+  co_await async_simple::coro::dispatch(get_coro_exe());
+}
+
 void cqy_ctx::register_name(std::string name) {
   s_->app->register_name(std::move(name), s_->id);
 }
 
-Lazy<void> cqy_ctx::wait_msg_spawn() {
+Lazy<void> cqy_ctx::wait_msg_spawn(sptr<cqy_ctx> self) {
   assert(s_->ex->currentThreadInExecutor());
   auto wrapper_on_msg = [this](std::string msg) -> Lazy<void> {
     co_await on_msg(cqy_msg_t::parse(msg, false));
@@ -125,12 +137,11 @@ Lazy<bool> cqy_ctx::rpc_on_call(
   co_return false;
 }
 
-void cqy_ctx::shutdown() {
-  if (s_->msg_queue.stop) {
+void cqy_ctx::shutdown(bool wait) {
+  if(!s_->msg_queue.shutdown()) {
     return;
   }
-  s_->msg_queue.shutdown();
-  if(s_->wait_stop) {
+  if(s_->wait_stop && wait) {
     s_->wait_stop->wait();
   }
 }

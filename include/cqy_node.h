@@ -40,7 +40,7 @@ namespace cqy {
 
     void create_client(node_info& info);
     rpc_server& create_rpc_server(uint32_t thread, node_info& info);
-    void rpc_server_start();
+    async_simple::Future<coro_rpc::err_code> rpc_server_start();
     void rpc_server_close();
     void shutdown();
   protected:

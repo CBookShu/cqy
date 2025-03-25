@@ -56,7 +56,7 @@ void cqy_node::create_client(node_info &info) {
   auto id = info.nodeid;
   s_->nodes.push_back(node);
 
-  node_mq_spawn(id).start([id](Try<void> tr) {
+  node_mq_spawn(id).start([id,s = node->rpc_client](Try<void> tr) {
     if (tr.hasError()) {
       try {
         throw tr.getException();
@@ -81,11 +81,8 @@ cqy_node::rpc_server& cqy_node::create_rpc_server(uint32_t thread, node_info& in
   return *s_->server;
 }
 
-void cqy_node::rpc_server_start() {
-  auto ec = s_->server->start();
-  if(ec) {
-    CQY_WARN("server stop msg:{}", ec.message());
-  }
+async_simple::Future<coro_rpc::err_code> cqy_node::rpc_server_start() {
+  return s_->server->async_start();
 }
 
 void cqy_node::rpc_server_close() {
@@ -97,6 +94,9 @@ void cqy_node::rpc_server_close() {
 void cqy_node::shutdown() {
   for (auto &n : s_->nodes) {
     n->coro_queue.shutdown();
+    if (n->rpc_client) {
+      n->rpc_client.reset();
+    }
   }
 }
 
