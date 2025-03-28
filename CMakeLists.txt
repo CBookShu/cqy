@@ -50,7 +50,11 @@ target_include_directories(cqy PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 link_libraries(cqy)
 add_executable(ping example/ping.cpp)
 add_executable(pong example/pong.cpp)
-add_executable(game_demo example/game_demo.cpp)
+add_executable(game_demo 
+    example/game_demo.cpp 
+    example/entity.h example/entity.cpp
+    example/game_component.h example/game_component.cpp
+    )
 target_link_libraries(game_demo PRIVATE msgpack-cxx)
 # add_executable(msgpack_rpc example/msgpack_rpc.cpp)
 # target_link_libraries(msgpack_rpc PRIVATE msgpack-cxx)

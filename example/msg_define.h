@@ -1,17 +1,85 @@
  #pragma once
- #include "msgpack/v3/object_fwd_decl.hpp"
+ #include "msgpack/adaptor/define_decl.hpp"
+#include "msgpack/v3/object_fwd_decl.hpp"
 #include "ylt/reflection/user_reflect_macro.hpp"
 #include <cstdint>
 #include <msgpack.hpp>
 #include <vector>
 
 namespace game_def {
+  struct Position
+  {
+    float x = 0;
+    float z = 0;
+    MSGPACK_DEFINE(x, z);
+    bool operator==(const Position& refRight)const
+    {
+      return x == refRight.x && z == refRight.z;
+    }
+    void operator+=(const Position& refRight)
+    {
+      x += refRight.x;
+      z += refRight.z;
+    }
+    Position operator-(const Position& refRight)const
+    {
+      Position pos(*this);
+      pos.x -= refRight.x;
+      pos.z -= refRight.z;
+      return pos;
+    }
+    Position operator+(const Position& refRight)const
+    {
+      Position pos(*this);
+      pos.x += refRight.x;
+      pos.z += refRight.z;
+      return pos;
+    }
+    bool DistanceLessEqual(const Position& refPos, float fDistance)const;
+
+    float DistancePow2(const Position& refPos)const;
+    float Distance(const Position& refPos)const;
+  };
+  struct Rect
+  {
+    Position poslefttop;
+    Position posrightbottom;
+    float width()const
+    {
+      return posrightbottom.x - poslefttop.x;
+    }
+    int32_t width_i()const
+    {
+      return (int32_t)width();
+    }
+    float height()const
+    {
+      return posrightbottom.z - poslefttop.z;
+    }
+    int32_t height_i()const
+    {
+      return (int32_t)height();
+    }
+    bool contain(const Position& pos)const
+    {
+      return
+        poslefttop.x < pos.x && pos.x < posrightbottom.x &&
+        poslefttop.z < pos.z && pos.z < posrightbottom.z;
+    }
+  };
   enum MsgId {
     MsgId_Invalid_0,
     Login = 1,
-    
+    Move = 2,
+    AddRoleRet = 3,
+    NotifyPos = 4,
+
+
     EnterScene = 23,
     EnterSingleScene = 24,
+
+    LeaveSpace = 26,
+    EntityDes = 27,
 
     MsgOnlie = 40,
     FromGame = 41,
@@ -23,7 +91,8 @@ namespace game_def {
   enum ObjectType {
     Object_Invalid_0,
 
-
+    Effect = 1,   // 特效
+    ViewWindow = 2,
   };
 
   enum SceneID
@@ -101,6 +170,44 @@ namespace game_def {
     uint32_t idSpace;
     MSGPACK_DEFINE(head, idSpace);
   };
+
+  // unit 
+  struct UnitConfig {
+    std::string strName;
+    std::string strPrefabName;
+    std::string strChooseSound;
+    MSGPACK_DEFINE(strName, strPrefabName, strChooseSound);
+  };
+
+  struct MsgAddRoleRet {
+    MsgHead head{.id = AddRoleRet};
+    uint64_t entitiId;
+    std::string nickName;
+    std::string entityName;
+    std::string prefabName;
+    int32_t i32HpMax;
+    ObjectType type;
+    MSGPACK_DEFINE(head, entitiId, nickName, entityName, prefabName, i32HpMax, type);
+  };
+
+  struct MsgNotifyPos {
+    MsgHead msg{.id = NotifyPos};
+    uint64_t entityId;
+    float x;
+    float z;
+    int eulerAnglesY;
+    int hp;
+    MSGPACK_DEFINE(msg, entityId, x, z, eulerAnglesY, hp);
+  };
+
+  // 描述
+  struct MsgEntityDes {
+    MsgHead msg {.id = EntityDes};
+    uint64_t entityId;
+    std::string strDes;
+    MSGPACK_DEFINE(msg, entityId, strDes);
+  };
+
 }
 
 MSGPACK_ADD_ENUM(game_def::MsgId);

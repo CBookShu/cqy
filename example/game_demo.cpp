@@ -1,12 +1,15 @@
 #include "game_demo.h"
 #include "cqy_logger.h"
+#include "game_component.h"
 #include "msg_define.h"
 #include <cassert>
+#include <format>
 #include <functional>
 #include <memory>
 #include <openssl/ct.h>
 #include <typeindex>
 #include <utility>
+#include <vector>
 
 bool ws_server_t::on_init(std::string_view param) {
   using namespace cinatra;
@@ -557,72 +560,99 @@ void game_t::destroy_scene(scene_t& s) {
 
 void game_t::enter_scene(player& p, cqy::sptr<scene_t>& s) {
   write_notify(p.connid, game_def::MsgEnterSpace{.idSpace = 1});
+
+  for(auto& id:s->entitys) {
+    entity_id_t eid(id);
+    auto e = s->entity_mgr.get(eid);
+    write_notify(p.connid, s->pack_addRoleRet(eid));
+    write_notify(p.connid, s->pack_notifyPos(eid));
+
+    auto [c] = e.component<BuildingComponent>();
+    if(c && !c->compelete()) {
+      write_notify(p.connid,
+        game_def::MsgEntityDes{
+          .entityId = eid,
+          .strDes = std::format("建造进度{}%", c->process)
+        });
+    }
+  }
+  auto viewe = s->entity_mgr.create();
+  s->entitys.insert(viewe.id);
+  viewe.add<PosComponent>();
+  viewe.add<OTypeComponent>(game_def::ViewWindow);
+  viewe.add<UnitConfigComponent>()->config = {"视口", "smoke", ""};
+  
 }
 
 cqy::Lazy<void> game_t::scene1_task(scene_t& s, const std::string& player) {
   co_return;
 }
 
-std::atomic_size_t component_t::gID = 0;
-
-void entity_t::destroy() {
-  mgr->destroy(id);
-  id.id = 0;
-}
-
-entity_t entity_mgr_t::create() {
-  uint32_t index,version;
-  if (free_list_.empty()) {
-    index = index_counter_++;
-    if(entity_version_.size() <= index) {
-      entity_version_.resize(index + 1);
-      for(auto& pool : pools_) {
-        if (pool) {
-          pool->resize(index + 1);
-        }
-      }
-    }
-    version = entity_version_[index] = 1;
-  } else {
-    index = free_list_.back();
-    free_list_.pop_back();
-    version = entity_version_[index];
+const std::string& scene_t::headName(entity_id_t id) {
+  auto e = entity_mgr.get(id);
+  auto [c1, c2, c3] = e.component<
+    PlayerNickNameComponent,ResourceCompoent,OTypeComponent
+  >();
+  if (c1) {
+    return c1->strNickName;
   }
-  return entity_t(entity_id_t(index, version), this);
-}
-
-entity_t entity_mgr_t::get(entity_id_t id) {
-  return entity_t{id, this};
-}
-
-void entity_mgr_t::destroy(entity_id_t id) {
-  auto index = id.idx;
-  if (id.idx >= entity_version_.size()) {
-    return;
+  if(c2) {
+    static const std::string str("资源");
+    return str;
   }
-  if(entity_version_[id.idx] != id.ver) {
-    return;
+  if(c3 && c3->type == game_def::Effect) {
+    static const std::string str("");
+    return str;
   }
-  entity_version_[id.idx]++;
-  free_list_.push_back(id.idx);
-  for(auto& p : pools_) {
-    if(p && p->size() >= id.idx) {
-      (*p)[id.idx].reset();
-    }
+  {
+    static const std::string str("敌人");
+    return str;
   }
 }
 
+game_def::MsgAddRoleRet scene_t::pack_addRoleRet(entity_id_t id) {
+  auto e = entity_mgr.get(id);
+  auto [c1, c2, c3] = e.component<
+    UnitConfigComponent, DefenceCompoent, OTypeComponent
+  >();
+  assert(c1 && c2 && c3);
+  game_def::MsgAddRoleRet msg;
+  msg.entitiId = id;
+  msg.nickName = headName(id);
+  msg.entityName = c1->config.strName;
+  msg.prefabName = c1->config.strPrefabName;
+  msg.i32HpMax = c2 ? c2->m_i32HpMax : 0;
+  msg.type = c3->type;
+  return msg;
+}
+
+game_def::MsgNotifyPos scene_t::pack_notifyPos(entity_id_t id) {
+  auto e = entity_mgr.get(id);
+  auto [c1, c2] = e.component<PosComponent, DefenceCompoent>();
+  game_def::MsgNotifyPos msg{};
+  msg.entityId = id;
+  msg.x = c1->pos.x;
+  msg.z = c1->pos.z;
+  msg.eulerAnglesY = c1->m_eulerAnglesY;
+  if(c2) {
+    msg.hp = c2->m_hp;
+  }
+  return msg;
+}
+
+static void test_entity();
 int main() {
-  cqy::cqy_app app;
-  app.reg_ctx<ws_server_t>("ws_server");
-  app.reg_ctx<gate_t>("gate");
-  app.reg_ctx<world_t>("world");
-  app.reg_ctx<game_t>("game");
-  app.load_config("config_game.json");
-  auto& config = app.get_config();
-  config.bootstrap = "gate 8,12349,server.crt,server.key,";
-  app.start();
-  app.stop();
+  test_entity();
+  // cqy::cqy_app app;
+  // app.reg_ctx<ws_server_t>("ws_server");
+  // app.reg_ctx<gate_t>("gate");
+  // app.reg_ctx<world_t>("world");
+  // app.reg_ctx<game_t>("game");
+  // app.load_config("config_game.json");
+  // auto& config = app.get_config();
+  // config.bootstrap = "gate 8,12349,server.crt,server.key,";
+  // app.start();
+  // app.stop();
   return 0;
 }
 
@@ -646,12 +676,15 @@ static void test_entity() {
   auto e1 = mgr.create();
   e1.add<std::string>();
 
-  auto entitys1 = mgr.entities_with_components<std::string>();
+  std::vector<entity_id_t> entitys;
+  entitys.push_back(e.id);
+  entitys.push_back(e1.id);
+  auto entitys1 = mgr.entities_with_components<std::string>(entitys);
   assert(entitys1.size() == 2);
   assert(entitys1[0] == e.id);
   assert(entitys1[1] == e1.id);
 
-  auto entitis2 = mgr.entities_with_components<std::string, int>();
+  auto entitis2 = mgr.entities_with_components<std::string, int>(entitys);
   assert(entitis2.size() == 1);
   assert(entitis2.front() == e.id);
 }
