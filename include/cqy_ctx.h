@@ -48,6 +48,7 @@ public:
   coro_io::ExecutorWrapper<>* get_coro_exe();
   cqy_app* get_app();
   void async_call(Lazy<void> task);
+
   Lazy<void> ctx_switch();
 
   template <auto F, bool muli = false>

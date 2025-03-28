@@ -10,6 +10,7 @@ namespace game_def {
     MsgId_Invalid_0,
     Login = 1,
     
+    EnterScene = 23,
     EnterSingleScene = 24,
 
     MsgOnlie = 40,
@@ -56,7 +57,7 @@ namespace game_def {
   };
 
   struct MsgLoginResponce {
-    MsgHead head;
+    MsgHead head{.id=MsgId::Login};
     enum Error{
       Ok,
       Busy,
@@ -64,37 +65,42 @@ namespace game_def {
       NameErr,
       VerionErr,
     };
-    Error result;
+    Error result = Ok;
     std::string tip;
     MSGPACK_DEFINE(head, result, tip);
   };
 
   
   struct MsgOnline {
-    MsgHead head;
+    MsgHead head{.id = MsgId::MsgOnlie};
     uint16_t u16count;
     std::vector<std::string> vecPlayerNickName;
     MSGPACK_DEFINE(head, u16count, vecPlayerNickName);
   };
 
   struct MsgFromWorld {
-    MsgHead head;
+    MsgHead head{.id = MsgId::FromWorld};
     std::vector<uint8_t> vecByte;
     MSGPACK_DEFINE(head, vecByte);
   };
 
   struct MsgFromGame {
-    MsgHead head;
+    MsgHead head{.id = MsgId::FromGame};
     std::vector<uint8_t> vecByte;
     MSGPACK_DEFINE(head, vecByte);
   };
 
   struct MsgEnterSingleScene {
-    MsgHead head;
+    MsgHead head{.id = MsgId::EnterSingleScene};
     SceneID id;
     MSGPACK_DEFINE(head, id);
   };
 
+  struct MsgEnterSpace {
+    MsgHead head{.id = MsgId::EnterScene};
+    uint32_t idSpace;
+    MSGPACK_DEFINE(head, idSpace);
+  };
 }
 
 MSGPACK_ADD_ENUM(game_def::MsgId);
