@@ -1,6 +1,8 @@
 #include "cqy.h"
+#include "cqy_logger.h"
 #include "ylt/easylog.hpp"
 #include <cassert>
+#include <chrono>
 #include <cstdint>
 #include <exception>
 
@@ -12,7 +14,7 @@ struct node_ping : public cqy_ctx {
     CQY_INFO("param:{}", param);
     register_name("ping");
 
-    test().via(get_coro_exe()).detach();
+    async_call(test());
     return true;
   }
 
@@ -20,8 +22,9 @@ struct node_ping : public cqy_ctx {
     assert(msg->session == last_session);
     assert(msg->response);
     CQY_INFO("from {:0x} msg:{}", msg->from, msg->buffer());
-    co_await coro_io::sleep_for(std::chrono::seconds(1));
+    co_await get_app()->co_sleep(std::chrono::seconds(1));
     get_app()->stop();
+    CQY_INFO("ping server stop");
     co_return;
   }
 
@@ -66,6 +69,5 @@ int main() {
   app.load_config("config2.json");
   app.reg_ctx<cqy::node_ping>("ping");
   app.start();
-  app.stop();
   return 0;
 }

@@ -33,8 +33,9 @@ namespace cqy {
       assert(get_coro_exe()->currentThreadInExecutor());
       CQY_INFO("from {:0x} msg:{}", msg->from, msg->buffer());
       response(msg, echo);
-      co_await coro_io::sleep_for( std::chrono::seconds(1));
+      co_await get_app()->co_sleep(std::chrono::seconds(1));
       get_app()->stop();
+      CQY_INFO("pong server stop");
       co_return;
     }
   };
