@@ -74,12 +74,16 @@ namespace game_def {
     AddRoleRet = 3,
     NotifyPos = 4,
 
+    Say = 6,
 
     EnterScene = 23,
     EnterSingleScene = 24,
 
     LeaveSpace = 26,
     EntityDes = 27,
+
+    PlotDialogue = 38,    // 剧情对话
+    PlotEnd = 39,         // 剧情结束
 
     MsgOnlie = 40,
     FromGame = 41,
@@ -208,8 +212,48 @@ namespace game_def {
     MSGPACK_DEFINE(msg, entityId, strDes);
   };
 
+  // 剧情对话
+  struct MsgPlotDialogue
+  {
+      MsgHead msg{ .id = PlotDialogue }; 
+      std::string leftAvatar;      // 头像左
+      std::string leftName;        // 名字左
+      std::string rightAvatar;     // 头像右
+      std::string rightName;       // 名字右
+      std::string dialogueText;    // 对话内容
+      bool showExitSceneButton;    // 显示退出场景按钮
+      MSGPACK_DEFINE(msg, leftAvatar, leftName, rightAvatar, rightName, dialogueText, showExitSceneButton);
+  };
+
+  struct MsgPlotEnd {
+    MsgHead msg{ .id = PlotEnd }; 
+    MSGPACK_DEFINE(msg);
+  };
+
+  struct MsgPlaySound {
+    MsgHead msg{ .id = PlaySound }; 
+    std::string strSound;
+    std::string strText;
+    MSGPACK_DEFINE(msg, strSound, strText);
+  };
+
+  enum SayChannel
+  {
+    SYSTEM,   // 系统
+    CHAT,     // 聊天
+    TASK_TIP, // 任务提示
+  };
+
+  struct MsgSay {
+    MsgHead msg {.id = Say};
+    std::string content;
+    SayChannel channel = SayChannel::SYSTEM;
+    MSGPACK_DEFINE(msg, content, channel);
+  };
+
 }
 
+MSGPACK_ADD_ENUM(game_def::SayChannel);
 MSGPACK_ADD_ENUM(game_def::MsgId);
 MSGPACK_ADD_ENUM(game_def::ObjectType);
 MSGPACK_ADD_ENUM(game_def::SceneID);

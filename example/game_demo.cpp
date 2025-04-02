@@ -517,6 +517,9 @@ cqy::Lazy<void> game_t::rpc_on_client(uint64_t connid, std::string_view msg) {
     auto head = codec.head();
     if(head.id == game_def::EnterSingleScene) {
       on_recv(connid, codec.as<game_def::MsgEnterSingleScene>());
+    }
+    else if (head.id == game_def::PlotEnd) {
+      on_recv(connid, codec.as<game_def::MsgPlotEnd>());
     } else {
       CQY_INFO("connid msgid:{}", cqy::algo::to_underlying(head.id));
     }
@@ -538,7 +541,17 @@ void game_t::on_recv(uint64_t connid, game_def::MsgEnterSingleScene msg) {
   auto [bNew, Scene] = get_scene1(p.name, c);
   enter_scene(p, Scene);
   if (bNew) {
-    async_call(std::invoke(c.func, this, std::ref(*Scene), p.name));
+    async_call(std::invoke(c.func, this, Scene, p.name));
+  }
+}
+
+void game_t::on_recv(uint64_t connid, game_def::MsgPlotEnd msg) {
+  auto& p = players.at(connid);
+  if(auto it = scene1_map.find(p.name); it != scene1_map.end()) {
+    auto S = it->second;
+    if (S->check_status<game_def::MsgPlotEnd>()) {
+      S->notify.notify();
+    }
   }
 }
 
@@ -551,6 +564,8 @@ auto game_t::get_scene1(std::string_view player, scene_config_t& c)  ->std::pair
   auto s = std::make_shared<scene_t>();
   s->config = &c;
   s->tp = scene_t::sys_clock_t::now();
+  s->game = this;
+  scene1_map[std::string(player.data(), player.size())] = s;
   return std::make_pair(true, s);
 }
 
@@ -576,16 +591,85 @@ void game_t::enter_scene(player& p, cqy::sptr<scene_t>& s) {
         });
     }
   }
-  auto viewe = s->entity_mgr.create();
-  s->entitys.insert(viewe.id);
+  auto viewe = s->create_entity();
+  s->connid2eid[p.connid] = viewe.id.id;
+  viewe.add<PlayerConn>(p.connid);
   viewe.add<PosComponent>();
   viewe.add<OTypeComponent>(game_def::ViewWindow);
   viewe.add<UnitConfigComponent>()->config = {"视口", "smoke", ""};
-  
+  viewe.add<AoiComponent>(500);   // 视野默认500
 }
 
-cqy::Lazy<void> game_t::scene1_task(scene_t& s, const std::string& player) {
-  co_return;
+cqy::Lazy<void> game_t::scene1_task(cqy::sptr<scene_t> S, std::string player) {
+  auto connid = S->game->get_player_connid(player);
+  auto e = S->geteid_fromconnid(connid);
+
+  #define WAIT_TYPE(t)  S->wait_idx = std::type_index(typeid(t)).hash_code(); \
+    co_await S->notify.wait();  \
+    S->notify.reset();
+
+  auto f_lingyun_say = [&](const std::string& strMsg){
+    static_interface::npc1_say(*S, player,
+      "图片/女教官白色海军服", "总教官：凌云", "", "", "    " + strMsg
+    );
+    static_interface::play_sound(*S, player, "音效/BUTTON", "");
+  };
+  auto f_user_say = [&](const std::string& msg, bool bQuit = false) {
+    static_interface::npc1_say(*S, player,
+      "", "", "图片/指挥学员学员青灰色军服", "玩家：" + player, "    " + msg, bQuit
+    );
+    static_interface::play_sound(*S, player, "音效/BUTTON", "");
+  };
+  f_lingyun_say("即时战略游戏的操作并不复杂，老年间便有四句童谣：\n"
+    "\t\t\t工程车，造基地；\n"
+    "\t\t\t基地又产工程车。\n"
+    "\t\t\t工程车，造兵营，\n"
+    "\t\t\t兵营产兵欢乐多！"
+  );
+  WAIT_TYPE(game_def::MsgPlotEnd);
+
+  f_user_say("听说工程车还可以造地堡和炮台，我也要试试。");
+  WAIT_TYPE(game_def::MsgPlotEnd);
+
+  f_lingyun_say(
+    "造完基地应该先安排工程车去采集晶体矿和燃气矿，这是一切生产建造的基础。此外建造民房可以提升活动单位上限。\n加油！"
+  );
+  WAIT_TYPE(game_def::MsgPlotEnd);
+
+  f_user_say("我只想单手操作，拖动视口 和 选中多个单位 如何操作呢？");
+  WAIT_TYPE(game_def::MsgPlotEnd);
+
+  f_lingyun_say("\t\t拖动地面就可以移动视口，此外设置（齿轮图标）界面还有视口镜头投影切换、放大、缩小按钮。当然也支持双指缩放视口。\n"
+    "\t\t先点击右边“框选”按钮，然后在屏幕中拖动，即可框选多个单位。在设置（齿轮图标）界面中可以切换菱形框选或方形框选。\n"
+    "\t\t全程只要单手握持手机单指操作即可。\n"
+  );
+  WAIT_TYPE(game_def::MsgPlotEnd);
+
+  f_user_say("只用一只手就能玩的RTS即时战略游戏，那岂不是跟刷短视频一样轻松？我一定要体验一下！");
+  WAIT_TYPE(game_def::MsgPlotEnd);
+
+  f_lingyun_say("走你!"); 
+  WAIT_TYPE(game_def::MsgPlotEnd);
+
+  static_interface::plotend(*S, player);
+  static_interface::say(*S, player,"欢迎来到RTS即时战略游戏，现在您要接受基础的训练", game_def::SayChannel::SYSTEM);
+
+  auto [p] = e.component<PlayerConn>();
+  assert(p);
+  p->mineral += 100;
+}
+
+entity_t scene_t::create_entity() {
+  auto e = entity_mgr.create();
+  entitys.insert(e.id);
+  return e;
+}
+
+entity_t scene_t::geteid_fromconnid(uint64_t connid) {
+  if (auto it = connid2eid.find(connid); it != connid2eid.end()) {
+    return entity_mgr.get(entity_id_t{it->second});
+  }
+  return entity_mgr.get({});
 }
 
 const std::string& scene_t::headName(entity_id_t id) {
@@ -642,17 +726,17 @@ game_def::MsgNotifyPos scene_t::pack_notifyPos(entity_id_t id) {
 
 static void test_entity();
 int main() {
-  test_entity();
-  // cqy::cqy_app app;
-  // app.reg_ctx<ws_server_t>("ws_server");
-  // app.reg_ctx<gate_t>("gate");
-  // app.reg_ctx<world_t>("world");
-  // app.reg_ctx<game_t>("game");
-  // app.load_config("config_game.json");
-  // auto& config = app.get_config();
-  // config.bootstrap = "gate 8,12349,server.crt,server.key,";
-  // app.start();
-  // app.stop();
+  // test_entity();
+  cqy::cqy_app app;
+  app.reg_ctx<ws_server_t>("ws_server");
+  app.reg_ctx<gate_t>("gate");
+  app.reg_ctx<world_t>("world");
+  app.reg_ctx<game_t>("game");
+  app.load_config("config_game.json");
+  auto& config = app.get_config();
+  config.bootstrap = "gate 8,12348,server.crt,server.key,";
+  app.start();
+  app.stop();
   return 0;
 }
 

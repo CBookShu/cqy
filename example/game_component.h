@@ -1,6 +1,16 @@
 #pragma once
 #include "entity.h"
+#include "game_demo.h"
 #include "msg_define.h"
+#include <string_view>
+#include <vector>
+
+struct PlayerConn {
+  uint64_t connid = 0;
+  game_def::MsgPlotDialogue msgLastMsg;
+  uint32_t gas = 0;   // 气体
+  uint32_t mineral;   // 晶体
+};
 
 struct PlayerNickNameComponent {
   std::string strNickName;
@@ -45,4 +55,25 @@ struct TempObstacleComponent {
 
 struct AoiComponent {
   int viewRange = 0;    // 视野范围
+  std::vector<entity_id_t> view_self;     // 自己可以看到的 id
+  std::vector<entity_id_t> view_other;    // 别人可以看到自己 id
+};
+
+struct static_interface {
+  // 剧情对话
+  static void npc1_say(scene_t& S,
+    std::string_view player,
+    std::string leftAvatar, 
+    std::string leftName,
+    std::string rightAvatar, 
+    std::string rightName,
+    std::string dialogueText,
+    bool bShowQuit = false
+  );
+
+  static void play_sound(scene_t& S,std::string_view player, std::string sound, std::string text);
+
+  static void plotend(scene_t& S,std::string_view player);
+
+  static void say(scene_t& S, std::string_view player, std::string content, game_def::SayChannel channel);
 };

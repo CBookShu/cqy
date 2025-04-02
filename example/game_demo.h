@@ -1,4 +1,5 @@
 #pragma once
+#include "async_simple/coro/ConditionVariable.h"
 #include "cqy.h"
 #include "cqy_utils.h"
 #include "ylt/coro_http/coro_http_server.hpp"
@@ -13,10 +14,12 @@
 #include <string_view>
 #include <tuple>
 #include <type_traits>
+#include <typeindex>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include "entity.h"
+#include "ylt/thirdparty/async_simple/coro/Generator.h"
 
 struct ws_server_t : public cqy::cqy_ctx {
   cqy::uptr<coro_http::coro_http_server> server;
@@ -164,7 +167,7 @@ struct world_t : public cqy::cqy_ctx {
 struct game_t;
 struct scene_t;
 struct scene_config_t {
-  using co_task_func = cqy::Lazy<void>(game_t::*)(scene_t& s, const std::string& player);
+  using co_task_func = cqy::Lazy<void>(game_t::*)(cqy::sptr<scene_t> s, std::string player);
   game_def::SceneID id;
   std::string strCrowdPath;
   std::string strSceneName;
@@ -174,11 +177,27 @@ struct scene_config_t {
 
 struct scene_t {
   using sys_clock_t = std::chrono::system_clock;
-
+  game_t* game = nullptr;
   scene_config_t* config = nullptr;
   entity_mgr_t entity_mgr;
   std::unordered_set<uint64_t> entitys;
+  std::unordered_map<uint64_t, uint64_t> connid2eid;
   sys_clock_t::time_point tp;
+  size_t wait_idx = 0;
+  async_simple::coro::Notifier notify;
+
+  entity_t create_entity();
+  entity_t geteid_fromconnid(uint64_t connid);
+  
+  template <typename T>
+  void wait_status() {
+    wait_idx = std::type_index(typeid(T)).hash_code();
+  }
+  template <typename T>
+  bool check_status() {
+    return wait_idx == std::type_index(typeid(T)).hash_code();
+  }
+
 
   const std::string& headName(entity_id_t id);
   game_def::MsgAddRoleRet pack_addRoleRet(entity_id_t id);
@@ -204,6 +223,17 @@ struct game_t : public cqy::cqy_ctx {
   virtual cqy::Lazy<void> on_msg(cqy::cqy_msg_t *msg) override;
   virtual void on_stop() override;
 
+  uint64_t get_player_connid(std::string_view name) {
+    if (auto it = name2id.find(name); it != name2id.end()) {
+      return it->second;
+    }
+    return 0;
+  }
+
+  void write_data(uint64_t connid, const std::string& data) {
+    dispatch_pack(".gate", gate_t::write, connid, data);
+  }
+
   template <typename Arg>
   void write_notify(uint64_t connid, Arg&&arg) {
     dispatch_pack(".gate", gate_t::write, connid, msg_code_t::pack(std::forward<Arg>(arg)));
@@ -219,10 +249,11 @@ struct game_t : public cqy::cqy_ctx {
   cqy::Lazy<void> rpc_on_client(uint64_t connid, std::string_view msg);
 
   void on_recv(uint64_t connid, game_def::MsgEnterSingleScene msg);
+  void on_recv(uint64_t connid, game_def::MsgPlotEnd msg);
 
   auto get_scene1(std::string_view player, scene_config_t& c) ->std::pair<bool, cqy::sptr<scene_t>>;
   void destroy_scene(scene_t& s);
   void enter_scene(player& p, cqy::sptr<scene_t>& s);
 
-  cqy::Lazy<void> scene1_task(scene_t& s, const std::string& player);
+  cqy::Lazy<void> scene1_task(cqy::sptr<scene_t> S, std::string player);
 };
