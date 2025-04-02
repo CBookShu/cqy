@@ -7,6 +7,10 @@ void entity_t::destroy() {
   id.id = 0;
 }
 
+bool entity_t::valid() {
+  return mgr && mgr->check(id);
+}
+
 entity_t entity_mgr_t::create() {
   uint32_t index,version;
   if (free_list_.empty()) {

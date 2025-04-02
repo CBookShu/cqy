@@ -4,7 +4,7 @@
       "name":"gate",
       "ip":"127.0.0.1",
       "nodeid":1,
-      "port":12348
+      "port":12349
     },
     {
       "name":"world",

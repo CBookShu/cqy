@@ -14,7 +14,7 @@ struct entity_id_t {
     };
   };
 
-  entity_id_t(uint64_t id_):id(id_) {}
+  entity_id_t(uint64_t id_ = 0):id(id_) {}
 
   entity_id_t(uint32_t idx_, uint32_t ver_) {
     idx = idx_;
@@ -68,6 +68,8 @@ struct entity_t {
   auto component() -> std::tuple<std::add_pointer_t<T>...>;
 
   void destroy();
+
+  bool valid();
 };
 
 struct entity_mgr_t {
