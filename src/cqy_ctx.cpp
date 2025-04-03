@@ -16,7 +16,7 @@ struct cqy_ctx::cqy_ctx_t {
   cqy_handle_t id;
   cqy::coro_spinlock ctx_lock;
   std::atomic_uint32_t session = 0;
-  cqy_coro_queue_t msg_queue;
+  cqy_cv_queue_t<cqy_str> msg_queue;
 
   std::unordered_map<std::string,
                      std::function<Lazy<rpc_result_t>(std::string_view)>,
@@ -44,9 +44,9 @@ cqy_app* cqy_ctx::get_app() {
 }
 
 uint32_t cqy_ctx::dispatch(uint32_t to, uint8_t t, std::string_view data) {
-  std::string s;
+  cqy_str s;
   auto sessionid = ++s_->session;
-  cqy_msg_t::make(s, s_->id, to, sessionid, t, false, data);
+  s.make(s_->id, to, sessionid, t, false, data);
   s_->app->node_mq_push(std::move(s));
   return sessionid;
 }
@@ -68,17 +68,17 @@ uint32_t cqy_ctx::dispatch(std::string_view nodectx, uint8_t t,
     return dispatch(id, t, std::move(data));
   }
 
-  std::string s;
+  cqy_str s;
   assert(ctxname.size() < std::numeric_limits<uint8_t>::max());
   auto sessionid = ++s_->session;
-  cqy_msg_t::make(s, s_->id, nodeid, ctxname, sessionid, t, false, data);
+  s.make(s_->id, nodeid, ctxname, sessionid, t, false, data);
   s_->app->node_mq_push(std::move(s));
   return sessionid;
 }
 
 void cqy_ctx::response(cqy_msg_t *msg, std::string_view data) {
-  std::string s;
-  auto rsp = cqy_msg_t::make(s, s_->id, msg->from, msg->session, msg->type,
+  cqy_str s;
+  s.make(s_->id, msg->from, msg->session, msg->type,
                              true, data);
   s_->app->node_mq_push(std::move(s));
 }
@@ -95,14 +95,14 @@ void cqy_ctx::register_name(std::string name) {
 }
 
 Lazy<void> cqy_ctx::wait_msg_spawn(sptr<cqy_ctx> self) {
-  auto wrapper_on_msg = [this](std::string msg) -> Lazy<void> {
+  auto wrapper_on_msg = [this](cqy_str msg) -> Lazy<void> {
     auto guard = co_await ctx_lock().coScopedLock();
-    co_await on_msg(cqy_msg_t::parse(msg, false));
+    co_await on_msg(msg);
   };
   while (!s_->msg_queue.stop.load(std::memory_order_relaxed)) {
     try {
       auto msg = co_await s_->msg_queue.pop();
-      if (auto *cmsg = cqy_msg_t::parse(msg, true); cmsg) {
+      if (auto *cmsg = msg.parse(true); cmsg) {
         wrapper_on_msg(std::move(msg))
           .via(coro_io::get_global_block_executor())
           .start([s = shared_from_this()](auto&&) {});
@@ -117,7 +117,7 @@ void cqy_ctx::attach_init(cqy_app* app, uint32_t id) {
   s_->id = id;
 }
 
-void cqy_ctx::node_push_msg(std::string msg) {
+void cqy_ctx::node_push_msg(cqy_str msg) {
   s_->msg_queue.push(std::move(msg));
 }
 

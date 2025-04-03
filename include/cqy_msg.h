@@ -32,14 +32,22 @@ namespace cqy {
     std::string_view name();
   
     uint8_t *end();
+  };
+
+  struct cqy_str : public std::string {
+    using std::string::string;
+
+    cqy_msg_t* msg() {
+      return reinterpret_cast<cqy_msg_t*>(data());
+    }
+
+    cqy_msg_t *parse(bool check);
   
-    static cqy_msg_t *parse(std::string_view s, bool check);
-  
-    static cqy_msg_t *make(std::string &s, uint32_t source, uint32_t to,
+    cqy_msg_t *make(uint32_t source, uint32_t to,
                            uint32_t session, uint8_t t, bool rsp,
                            std::string_view data);
   
-    static cqy_msg_t *make(std::string &s, uint32_t source, uint8_t nodeto,
+    cqy_msg_t *make(uint32_t source, uint8_t nodeto,
                            std::string_view name, uint32_t session, uint8_t t,
                            bool rsp, std::string_view data);
   };

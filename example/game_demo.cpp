@@ -54,7 +54,8 @@ bool ws_server_t::on_init(std::string_view param) {
   return true;
 }
 
-cqy::Lazy<void> ws_server_t::on_msg(cqy::cqy_msg_t *msg) { 
+cqy::Lazy<void> ws_server_t::on_msg(cqy::cqy_str& s) { 
+  auto msg = s.msg();
   try {
     if (msg->type == 1) {
       // write
@@ -256,7 +257,8 @@ bool gate_t::on_init(std::string_view param) {
   return true;
 }
 
-cqy::Lazy<void> gate_t::on_msg(cqy::cqy_msg_t *msg) { 
+cqy::Lazy<void> gate_t::on_msg(cqy::cqy_str& s) { 
+  auto msg = s.msg();
   try {
     if (msg->type == write) {
       auto [connid, str] = unpack<uint64_t, std::string_view>(msg->buffer());
@@ -417,7 +419,8 @@ bool world_t::on_init(std::string_view param) {
   return true; 
 }
 
-cqy::Lazy<void> world_t::on_msg(cqy::cqy_msg_t *msg) { 
+cqy::Lazy<void> world_t::on_msg(cqy::cqy_str& s) { 
+  auto msg = s.msg();
   try {
     if (msg->type == gate_t::close) {
       auto connid = unpack<uint64_t>(msg->buffer());
@@ -481,7 +484,8 @@ bool game_t::on_init(std::string_view param) {
   return true; 
 }
 
-cqy::Lazy<void> game_t::on_msg(cqy::cqy_msg_t *msg) { 
+cqy::Lazy<void> game_t::on_msg(cqy::cqy_str& s) { 
+  auto msg = s.msg();
   try {
     if (msg->type == gate_t::close) {
       auto connid = unpack<uint64_t>(msg->buffer());

@@ -5,6 +5,7 @@
 #include "ylt/coro_rpc/impl/default_config/coro_rpc_config.hpp"
 #include <cstdint>
 #include <string_view>
+#include "cqy_msg.h"
 
 namespace cqy {
 
@@ -25,7 +26,7 @@ namespace cqy {
 
     struct node_t {
       node_info info;
-      cqy_coro_queue_t coro_queue;
+      cqy_cv_queue_t<cqy_str> coro_queue;
       sptr<cqy_node::rpc_client_pool> rpc_client;
     };
 

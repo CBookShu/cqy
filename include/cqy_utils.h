@@ -183,8 +183,6 @@ template <typename T> using uptr = std::unique_ptr<T>;
 
 template <typename T> using optv = std::optional<T>;
 
-using cqy_coro_queue_t = cqy_cv_queue_t<std::string>;
-
 template <auto func, typename Self>
 Lazy<rpc_result_t> rpc_call_func(std::string_view str, Self *self) {
   using T = decltype(func);

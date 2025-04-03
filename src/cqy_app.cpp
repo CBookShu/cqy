@@ -121,8 +121,8 @@ auto cqy_app::get_handle(std::string_view name)
   return std::make_optional(std::make_pair(h, p.second));
 }
 
-void cqy_app::node_mq_push(std::string msg) {
-  auto *cmsg = cqy_msg_t::parse(msg, true);
+void cqy_app::node_mq_push(cqy_str msg) {
+  auto *cmsg = msg.parse(true);
   if (!cmsg) {
     return;
   }
@@ -143,9 +143,9 @@ void cqy_app::node_mq_push(std::string msg) {
   }
 }
 
-void cqy_app::rpc_on_mq(std::deque<std::string> msgs) {
+void cqy_app::rpc_on_mq(std::deque<cqy_str> msgs) {
   for (auto &msg : msgs) {
-    auto cqy_msg = cqy_msg_t::parse(msg, true);
+    auto cqy_msg = msg.parse(true);
     if (!cqy_msg) {
       CQY_ERROR("rpc_on_mq msg error");
       return ;

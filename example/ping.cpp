@@ -19,7 +19,8 @@ struct node_ping : public cqy_ctx {
     return true;
   }
 
-  virtual Lazy<void> on_msg(cqy_msg_t *msg) override {
+  virtual Lazy<void> on_msg(cqy_str& s) override {
+    auto msg = s.msg();
     using namespace std::chrono_literals;
     assert(msg->session == last_session);
     assert(msg->response);

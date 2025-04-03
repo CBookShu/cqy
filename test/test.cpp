@@ -263,7 +263,8 @@ TEST_CASE("ctx:dispatch") {
       send_id = dispatch("n2.ctx_test2", 0, std::string(param));
       return true;
     }
-    virtual Lazy<void> on_msg(cqy_msg_t* msg) override {
+    virtual Lazy<void> on_msg(cqy_str& s) override {
+      auto msg = s.msg();
       CHECK(msg->buffer() == "world");
       CHECK(msg->response);    // response
       CHECK(msg->session == send_id);
@@ -292,7 +293,8 @@ TEST_CASE("ctx:dispatch") {
       register_name("ctx_test2");
       return true;
     }
-    virtual Lazy<void> on_msg(cqy_msg_t* msg) override {
+    virtual Lazy<void> on_msg(cqy_str& s) override {
+      auto msg = s.msg();
       CHECK(msg->buffer() == "hello");
       CHECK(msg->type == 0);
       response(msg, "world");

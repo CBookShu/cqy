@@ -29,7 +29,8 @@ namespace cqy {
       return true;
     }
 
-    virtual Lazy<void> on_msg(cqy_msg_t* msg) override {
+    virtual Lazy<void> on_msg(cqy_str& s) override {
+      auto msg = s.msg();
       using namespace std::chrono_literals;
       CQY_INFO("from {:0x} msg:{}", msg->from, msg->buffer());
       response(msg, echo);

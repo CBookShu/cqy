@@ -30,7 +30,7 @@ public:
   uint32_t getid();
 
   virtual bool on_init(std::string_view param) { return true; }
-  virtual Lazy<void> on_msg(cqy_msg_t *msg) { co_return; }
+  virtual Lazy<void> on_msg(cqy_str& msg) { co_return; }
   virtual void on_stop() {}
 
   uint32_t dispatch(uint32_t to, uint8_t t, std::string_view data);
@@ -55,7 +55,7 @@ protected:
 private:
   friend class cqy_app;
   Lazy<void> wait_msg_spawn(sptr<cqy_ctx> self);
-  void node_push_msg(std::string msg);
+  void node_push_msg(cqy_str msg);
   Lazy<bool> rpc_on_call(std::string_view func_name,std::string_view param_data, rpc_result_t& result);
   void shutdown();
   cqy::coro_spinlock& ctx_lock();

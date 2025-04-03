@@ -28,10 +28,10 @@ std::string_view cqy_msg_t::buffer() {
   return std::string_view((const char *)b, len);
 }
 
-cqy_msg_t *cqy_msg_t::parse(std::string_view s, bool check) {
-  cqy_msg_t *cqy_msg = (cqy_msg_t *)s.data();
+cqy_msg_t *cqy_str::parse(bool check) {
+  cqy_msg_t *cqy_msg = (cqy_msg_t *)data();
   if (check) {
-    size_t sz = s.size();
+    size_t sz = size();
     if (sz < sizeof(cqy_msg_t)) {
       return nullptr;
     }
@@ -53,39 +53,38 @@ cqy_msg_t *cqy_msg_t::parse(std::string_view s, bool check) {
   return cqy_msg;
 }
 
-cqy_msg_t *cqy_msg_t::make(std::string &s, uint32_t source, uint32_t to,
+cqy_msg_t *cqy_str::make(uint32_t source, uint32_t to,
                            uint32_t session, uint8_t t, bool rsp,
-                           std::string_view data) {
-  iguana::detail::resize(s, sizeof(cqy_msg_t) + data.size());
-  std::ranges::copy(data, s.data() + sizeof(cqy_msg_t));
-  auto *cmsg = parse(s, false);
+                           std::string_view msgdata) {
+  iguana::detail::resize(*this, sizeof(cqy_msg_t) + msgdata.size());
+  std::ranges::copy(msgdata, data() + sizeof(cqy_msg_t));
+  auto *cmsg = parse(false);
   *cmsg = {};
   cmsg->from = source;
   cmsg->to = to;
   cmsg->session = session;
-  cmsg->len = s.size() - sizeof(cqy_msg_t);
+  cmsg->len = size() - sizeof(cqy_msg_t);
   cmsg->response = rsp;
   cmsg->type = t;
   return cmsg;
 }
 
-cqy_msg_t *cqy_msg_t::make(std::string &s, uint32_t source, uint8_t nodeto,
+cqy_msg_t *cqy_str::make(uint32_t source, uint8_t nodeto,
                            std::string_view name, uint32_t session, uint8_t t,
-                           bool rsp, std::string_view data) {
+                           bool rsp, std::string_view msgdata) {
   /*
   cqy_msg_t           + size      + name            + data
   sizeof(cqy_msg_t)   uint8_t     name.size()       data.size()
   */
-  iguana::detail::resize(s, sizeof(cqy_msg_t) + sizeof(uint8_t) + name.size() +
-                                data.size());
-  uint8_t *p = (uint8_t *)(s.data() + sizeof(cqy_msg_t));
+  iguana::detail::resize(*this, sizeof(cqy_msg_t) + sizeof(uint8_t) + name.size() + msgdata.size());
+  uint8_t *p = (uint8_t *)(data() + sizeof(cqy_msg_t));
   *p = name.size();
   std::ranges::copy(name, p + 1);
-  std::ranges::copy(data, p + name.size() + 1);
+  std::ranges::copy(msgdata, p + name.size() + 1);
 
   cqy_handle_t h;
   h.nodeid = nodeto;
-  auto *cmsg = cqy_msg_t::parse(s, false);
+  auto *cmsg = parse(false);
   *cmsg = {};
   cmsg->from = source;
   cmsg->to = h.id;
@@ -93,6 +92,6 @@ cqy_msg_t *cqy_msg_t::make(std::string &s, uint32_t source, uint8_t nodeto,
   cmsg->type = t;
   cmsg->route = 1;
   cmsg->response = rsp;
-  cmsg->len = s.size() - sizeof(cqy_msg_t);
+  cmsg->len = size() - sizeof(cqy_msg_t);
   return cmsg;
 }

@@ -104,7 +104,7 @@ Lazy<void> cqy_node::node_mq_spawn(uint8_t id) {
   using namespace std::chrono_literals;
 
   auto n = get_node(id);
-  std::deque<std::string> msgs;
+  std::deque<cqy_str> msgs;
 
   size_t warn_size = 1024;
   while (!n->coro_queue.stop) {

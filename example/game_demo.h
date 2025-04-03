@@ -1,6 +1,7 @@
 #pragma once
 #include "async_simple/coro/ConditionVariable.h"
 #include "cqy.h"
+#include "cqy_msg.h"
 #include "cqy_utils.h"
 #include "ylt/coro_http/coro_http_server.hpp"
 #include "msg_define.h"
@@ -43,7 +44,7 @@ struct ws_server_t : public cqy::cqy_ctx {
   */
   virtual bool on_init(std::string_view param) override;
 
-  virtual cqy::Lazy<void> on_msg(cqy::cqy_msg_t *msg) override;
+  virtual cqy::Lazy<void> on_msg(cqy::cqy_str& msg) override;
 
   virtual void on_stop() override;
 
@@ -100,7 +101,7 @@ struct gate_t : public cqy::cqy_ctx {
 
   virtual bool on_init(std::string_view param) override;
 
-  virtual cqy::Lazy<void> on_msg(cqy::cqy_msg_t *msg) override;
+  virtual cqy::Lazy<void> on_msg(cqy::cqy_str& s) override;
 
   cqy::Lazy<void> init_set_allocer();
 
@@ -145,7 +146,7 @@ struct world_t : public cqy::cqy_ctx {
   std::unordered_map<std::string, uint64_t,cqy::string_hash, std::equal_to<>> name2conid;
 
   virtual bool on_init(std::string_view param) override;
-  virtual cqy::Lazy<void> on_msg(cqy::cqy_msg_t *msg) override;
+  virtual cqy::Lazy<void> on_msg(cqy::cqy_str& s) override;
   virtual void on_stop() override;
 
   template <typename Arg>
@@ -220,7 +221,7 @@ struct game_t : public cqy::cqy_ctx {
 
   virtual bool on_init(std::string_view param) override;
 
-  virtual cqy::Lazy<void> on_msg(cqy::cqy_msg_t *msg) override;
+  virtual cqy::Lazy<void> on_msg(cqy::cqy_str& s) override;
   virtual void on_stop() override;
 
   uint64_t get_player_connid(std::string_view name) {

@@ -50,7 +50,7 @@ public:
   auto get_handle(std::string_view name)
       -> optv<std::pair<cqy_handle_t, std::string_view>>;
 
-  void rpc_on_mq(std::deque<std::string> msgs);
+  void rpc_on_mq(std::deque<cqy_str> msgs);
 
   Lazy<uint32_t> rpc_find_ctx(std::string_view nodectx);
 
@@ -68,7 +68,7 @@ public:
   Lazy<rpc_result_t> ctx_call_name(std::string_view nodectx,
                                    std::string_view func_name, Args &&...args);
 
-  void node_mq_push(std::string msg);
+  void node_mq_push(cqy_str msg);
 
 public:
   // ctx creator reg and create by name
