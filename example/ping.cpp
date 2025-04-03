@@ -1,5 +1,6 @@
 #include "cqy.h"
 #include "cqy_logger.h"
+#include "ylt/coro_io/coro_io.hpp"
 #include "ylt/easylog.hpp"
 #include <cassert>
 #include <chrono>
@@ -19,10 +20,11 @@ struct node_ping : public cqy_ctx {
   }
 
   virtual Lazy<void> on_msg(cqy_msg_t *msg) override {
+    using namespace std::chrono_literals;
     assert(msg->session == last_session);
     assert(msg->response);
     CQY_INFO("from {:0x} msg:{}", msg->from, msg->buffer());
-    co_await get_app()->co_sleep(std::chrono::seconds(1));
+    co_await coro_io::sleep_for(1s);
     get_app()->stop();
     CQY_INFO("ping server stop");
     co_return;

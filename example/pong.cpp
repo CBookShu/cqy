@@ -30,10 +30,10 @@ namespace cqy {
     }
 
     virtual Lazy<void> on_msg(cqy_msg_t* msg) override {
-      assert(get_coro_exe()->currentThreadInExecutor());
+      using namespace std::chrono_literals;
       CQY_INFO("from {:0x} msg:{}", msg->from, msg->buffer());
       response(msg, echo);
-      co_await get_app()->co_sleep(std::chrono::seconds(1));
+      co_await coro_io::sleep_for(1s);
       get_app()->stop();
       CQY_INFO("pong server stop");
       co_return;

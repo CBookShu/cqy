@@ -119,7 +119,7 @@ TEST_CASE("cqy_ctx_mgr_t") {
   sptr<cqy_ctx> p(new cqy_ctx{}, &algo::deleter<cqy_ctx>);
   cqy_handle_t h;
   h.set_ctxid(mgr.new_id());
-  p->attach_init(nullptr, h, nullptr);
+  p->attach_init(nullptr, h);
   mgr.add_ctx(p);
   CHECK(mgr.find_name("ping") == 0);
   mgr.register_name("ping", p->getid());
@@ -127,7 +127,7 @@ TEST_CASE("cqy_ctx_mgr_t") {
 
   sptr<cqy_ctx> p1(new cqy_ctx{}, &algo::deleter<cqy_ctx>);
   h.set_ctxid(mgr.new_id());
-  p1->attach_init(nullptr, h, nullptr);
+  p1->attach_init(nullptr, h);
   mgr.add_ctx(p1);
   mgr.register_name("pong", p1->getid());
   CHECK(mgr.find_name("pong") == p1->getid());
@@ -209,11 +209,11 @@ TEST_CASE("app:reg ctx") {
   struct ctx_test : public cqy_ctx {
     virtual bool on_init(std::string_view param) override {
       CHECK(param == "hello");
-      delay_stop().via(get_coro_exe()).detach();
+      async_call(delay_stop());
       return true;
     }
     Lazy<void> delay_stop() {
-      co_await get_app()->co_sleep(1s);
+      co_await coro_io::sleep_for(1s);
       get_app()->stop();
     } 
   };
@@ -327,7 +327,7 @@ TEST_CASE("ctx:rpc") {
   struct ctx_test1 : public cqy_ctx {
     uint32_t send_id = 0;
     virtual bool on_init(std::string_view param) override {
-      test_rpc().via(get_coro_exe()).detach();
+      async_call(test_rpc());
       return true;
     }
     Lazy<void> test_rpc() {
@@ -426,7 +426,7 @@ TEST_CASE("ctx:find_ctx") {
     Lazy<void> test() {
       auto r = co_await get_app()->rpc_find_ctx("n2.ctx_test2"sv);
       CHECK(r == ctx2_id);
-      co_await get_app()->co_sleep(2s);
+      co_await coro_io::sleep_for(2s);
       get_app()->stop();
       co_return;
     }
@@ -455,7 +455,7 @@ TEST_CASE("ctx:find_ctx") {
     }
 
     Lazy<void> test() {
-      co_await get_app()->co_sleep(1s);
+      co_await coro_io::sleep_for(1s);
       auto id = co_await get_app()->rpc_find_ctx("n1.ctx_test1"sv);
       CHECK(id == ctx1_id);
       get_app()->stop();

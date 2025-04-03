@@ -83,7 +83,7 @@ void cqy_app::start() {
   for (auto id : ctxids) {
     auto ctx = s_->ctx_mgr.get_ctx(id);
     if (ctx) {
-      ctx->shutdown(true);
+      ctx->shutdown();
     }
   }
 }
@@ -289,8 +289,7 @@ uint32_t cqy_app::create_ctx(std::string_view name, std::string_view param) {
   cqy_handle_t h;
   h.set_ctxid(s_->ctx_mgr.new_id());
   h.nodeid = s_->config.nodeid;
-  auto ex = coro_io::get_global_block_executor();
-  ctx->attach_init(this, h, ex);
+  ctx->attach_init(this, h);
 
   if (!ctx->on_init(param)) {
     CQY_ERROR("ctx:{} init error", name);
@@ -298,7 +297,7 @@ uint32_t cqy_app::create_ctx(std::string_view name, std::string_view param) {
   }
   // begin receive msg
   s_->ctx_mgr.add_ctx(ctx);
-  ctx->wait_msg_spawn(ctx).via(ex).detach();
+  ctx->wait_msg_spawn(ctx).via(coro_io::get_global_block_executor()).detach();
   return h;
 }
 
@@ -307,7 +306,7 @@ void cqy_app::stop_ctx(std::string_view name) {
   auto ctx = s_->ctx_mgr.get_ctx(id);
   if (ctx) {
     s_->ctx_mgr.del_ctx(id);
-    ctx->shutdown(false);
+    ctx->shutdown();
   }
 }
 
@@ -315,6 +314,6 @@ void cqy_app::stop_ctx(uint32_t id) {
   auto ctx = s_->ctx_mgr.get_ctx(id);
   if (ctx) {
     s_->ctx_mgr.del_ctx(id);
-    ctx->shutdown(false);
+    ctx->shutdown();
   }
 }

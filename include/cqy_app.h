@@ -68,9 +68,6 @@ public:
   Lazy<rpc_result_t> ctx_call_name(std::string_view nodectx,
                                    std::string_view func_name, Args &&...args);
 
-  template <typename R, typename P>
-  Lazy<void> co_sleep(std::chrono::duration<R, P> s);
-
   void node_mq_push(std::string msg);
 
 public:
@@ -90,13 +87,6 @@ public:
   void stop_ctx(std::string_view name);
   void stop_ctx(uint32_t id);
 };
-
-template <typename R, typename P>
-Lazy<void> cqy_app::co_sleep(std::chrono::duration<R, P> s) {
-  auto ex = co_await async_simple::CurrentExecutor();
-  co_await coro_io::sleep_for(s);
-  co_await async_simple::coro::dispatch(ex);
-}
 
 template <typename... fArgs, typename... Args>
 Lazy<rpc_result_t> cqy_app::ctx_call_name(std::string_view nodectx,

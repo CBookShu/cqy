@@ -45,7 +45,7 @@ bool ws_server_t::on_init(std::string_view param) {
       CQY_ERROR("ws_server start error:{}", ec.message());
       return false;
     }
-    co_ws_start(std::move(start_f)).via(get_coro_exe()).detach();
+    co_ws_start(std::move(start_f)).start([](auto&&){});
     CQY_INFO("ws_server init success:{}", param);
   } catch (const std::exception &e) {
     CQY_ERROR("ws_server init err:{} param:{}", e.what(), param);

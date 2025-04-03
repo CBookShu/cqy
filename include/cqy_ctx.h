@@ -26,7 +26,7 @@ public:
   cqy_ctx();
   ~cqy_ctx();
 
-  void attach_init(cqy_app* app, uint32_t id, coro_io::ExecutorWrapper<>* ex);
+  void attach_init(cqy_app* app, uint32_t id);
   uint32_t getid();
 
   virtual bool on_init(std::string_view param) { return true; }
@@ -45,11 +45,8 @@ public:
   template <typename...Args>
   auto unpack(std::string_view msg);
 
-  coro_io::ExecutorWrapper<>* get_coro_exe();
   cqy_app* get_app();
   void async_call(Lazy<void> task);
-
-  Lazy<void> ctx_switch();
 
   template <auto F, bool muli = false>
   void register_rpc_func(std::string_view name = "");
@@ -60,7 +57,9 @@ private:
   Lazy<void> wait_msg_spawn(sptr<cqy_ctx> self);
   void node_push_msg(std::string msg);
   Lazy<bool> rpc_on_call(std::string_view func_name,std::string_view param_data, rpc_result_t& result);
-  void shutdown(bool wait);
+  void shutdown();
+  cqy::coro_spinlock& ctx_lock();
+  Lazy<void> coro_async_wrapper(Lazy<void> task);
 };
 
 template <auto F, bool muli>
@@ -73,17 +72,8 @@ void cqy_ctx::register_rpc_func(std::string_view name) {
     if constexpr (muli) {
       co_return co_await rpc_call_func<F>(data, static_cast<class_type_t *>(this));
     } else {
-      auto *pre_ex = co_await async_simple::CurrentExecutor();
-      auto* ex = this->get_coro_exe();
-      auto in_ex = ex->currentThreadInExecutor();
-      if (!in_ex) {
-        co_await async_simple::coro::dispatch(ex);
-      }
-      auto r = co_await rpc_call_func<F>(data, static_cast<class_type_t *>(this));
-      if (!in_ex) {
-        co_await async_simple::coro::dispatch(pre_ex);
-      }
-      co_return r;
+      auto guard = co_await ctx_lock().coScopedLock();
+      co_return co_await rpc_call_func<F>(data, static_cast<class_type_t *>(this));;
     }
   };
 }

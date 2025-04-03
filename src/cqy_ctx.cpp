@@ -1,18 +1,20 @@
 #include "cqy_ctx.h"
 #include "async_simple/coro/Dispatch.h"
 #include "cqy_app.h"
+#include "cqy_utils.h"
+#include <exception>
 #include <memory>
 #include <latch>
 #include <cqy_msg.h>
+#include <utility>
 
 using namespace cqy;
 
 struct cqy_ctx::cqy_ctx_t {
   friend class cqy_app;
   cqy_app *app = nullptr;
-  coro_io::ExecutorWrapper<> *ex = nullptr;
   cqy_handle_t id;
-  uptr<std::latch> wait_stop;
+  cqy::coro_spinlock ctx_lock;
   std::atomic_uint32_t session = 0;
   cqy_coro_queue_t msg_queue;
 
@@ -27,6 +29,7 @@ cqy_ctx::cqy_ctx() {
 }
 
 cqy_ctx::~cqy_ctx() {
+  on_stop();
   if (s_) {
     delete s_;
   }
@@ -34,10 +37,6 @@ cqy_ctx::~cqy_ctx() {
 
 uint32_t cqy_ctx::getid() {
   return s_->id;
-}
-
-coro_io::ExecutorWrapper<>* cqy_ctx::get_coro_exe() {
-  return s_->ex;
 }
 
 cqy_app* cqy_ctx::get_app() {
@@ -85,14 +84,10 @@ void cqy_ctx::response(cqy_msg_t *msg, std::string_view data) {
 }
 
 void cqy_ctx::async_call(Lazy<void> task) {
-  std::move(task)
-  .via(get_coro_exe())
-  .start([s = shared_from_this()](auto&& t){
-  });
-}
-
-Lazy<void> cqy_ctx::ctx_switch() {
-  co_await async_simple::coro::dispatch(get_coro_exe());
+  coro_async_wrapper(std::move(task))
+    .via(coro_io::get_global_block_executor())
+    .start([s = shared_from_this()](auto&& t){
+    });
 }
 
 void cqy_ctx::register_name(std::string name) {
@@ -100,28 +95,26 @@ void cqy_ctx::register_name(std::string name) {
 }
 
 Lazy<void> cqy_ctx::wait_msg_spawn(sptr<cqy_ctx> self) {
-  assert(s_->ex->currentThreadInExecutor());
   auto wrapper_on_msg = [this](std::string msg) -> Lazy<void> {
+    auto guard = co_await ctx_lock().coScopedLock();
     co_await on_msg(cqy_msg_t::parse(msg, false));
   };
   while (!s_->msg_queue.stop.load(std::memory_order_relaxed)) {
     try {
       auto msg = co_await s_->msg_queue.pop();
       if (auto *cmsg = cqy_msg_t::parse(msg, true); cmsg) {
-        wrapper_on_msg(std::move(msg)).via(s_->ex).detach();
+        wrapper_on_msg(std::move(msg))
+          .via(coro_io::get_global_block_executor())
+          .start([s = shared_from_this()](auto&&) {});
       }
     } catch (...) {
     }
   }
-  on_stop();
-  s_->wait_stop->count_down();
 }
 
-void cqy_ctx::attach_init(cqy_app* app, uint32_t id, coro_io::ExecutorWrapper<>* ex) {
+void cqy_ctx::attach_init(cqy_app* app, uint32_t id) {
   s_->app = app;
   s_->id = id;
-  s_->ex = ex;
-  s_->wait_stop = std::make_unique<std::latch>(1);
 }
 
 void cqy_ctx::node_push_msg(std::string msg) {
@@ -137,11 +130,19 @@ Lazy<bool> cqy_ctx::rpc_on_call(
   co_return false;
 }
 
-void cqy_ctx::shutdown(bool wait) {
-  if(!s_->msg_queue.shutdown()) {
-    return;
-  }
-  if(s_->wait_stop && wait) {
-    s_->wait_stop->wait();
+void cqy_ctx::shutdown() {
+  s_->msg_queue.shutdown();
+}
+
+cqy::coro_spinlock& cqy_ctx::ctx_lock() {
+  return s_->ctx_lock;
+}
+
+Lazy<void> cqy_ctx::coro_async_wrapper(Lazy<void> task) {
+  auto guard = co_await s_->ctx_lock.coScopedLock();
+  try {
+    co_await std::move(task);
+  } catch(std::exception&) {
+
   }
 }
