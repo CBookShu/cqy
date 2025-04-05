@@ -1,3 +1,5 @@
+#define DOCTEST_CONFIG_IMPLEMENT
+#include <doctest.h>
 #include "cqy_handle.h"
 #include "cqy_logger.h"
 #include "cqy_utils.h"
@@ -5,8 +7,6 @@
 #include <cstddef>
 #include <optional>
 #include <thread>
-#define DOCTEST_CONFIG_IMPLEMENT
-#include <doctest.h>
 #include "cqy.h"
 #include "cqy_ctx_mgr.h"
 
