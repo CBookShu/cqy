@@ -189,14 +189,12 @@ Lazy<uint32_t> cqy_app::rpc_find_ctx(std::string_view nodectx) {
       co_return 0;
     }
 
-    auto ex = co_await async_simple::CurrentExecutor();
     auto r = co_await node->rpc_client->send_request(
       [&](coro_rpc::coro_rpc_client &client)
           -> Lazy<coro_rpc::rpc_result<uint32_t>> {
         co_return co_await client.call<&cqy_app::rpc_find_ctx>(
             nodectx);
       });
-    co_await async_simple::coro::dispatch(ex);
 
     if (!r) {
       auto ec = std::make_error_code(r.error());
@@ -231,9 +229,7 @@ Lazy<rpc_result_t> cqy_app::rpc_ctx_call(uint32_t to,
     co_return result;
   }
 
-  auto ex = co_await async_simple::CurrentExecutor();
   auto ok = co_await ctx->rpc_on_call(func_name, param_data, result);
-  co_await async_simple::coro::dispatch(ex);
   if (ok) {
     co_return result;
   }
@@ -265,9 +261,8 @@ Lazy<rpc_result_t> cqy_app::rpc_ctx_call_name(std::string_view nodectx,
     result.res = std::format("nodectx:{} ctx miss", nodectx);
     co_return result;
   }
-  auto ex = co_await async_simple::CurrentExecutor();
+
   auto ok = co_await ctx->rpc_on_call(func_name, param_data, result);
-  co_await async_simple::coro::dispatch(ex);
   if (ok) {
     co_return result;
   }

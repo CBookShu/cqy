@@ -116,14 +116,12 @@ Lazy<rpc_result_t> cqy_app::ctx_call_name(std::string_view nodectx,
     std::string param;
     rpc_encode<fArgs...>(param, std::forward<Args>(args)...);
 
-    auto ex = co_await async_simple::CurrentExecutor();
     auto r = co_await n->rpc_client->send_request(
         [&](coro_rpc::coro_rpc_client &client)
             -> Lazy<coro_rpc::rpc_result<rpc_result_t>> {
           co_return co_await client.call<&cqy_app::rpc_ctx_call_name>(
               nodectx, func_name, param);
         });
-    co_await async_simple::coro::dispatch(ex);
 
     if (!r) {
       result.status = -4;
@@ -160,14 +158,12 @@ Lazy<rpc_result_t> cqy_app::ctx_call(uint32_t to, std::string_view func_name,
     std::string param;
     rpc_encode<fArgs...>(param, std::forward<Args>(args)...);
 
-    auto ex = co_await async_simple::CurrentExecutor();
     auto r = co_await n->rpc_client->send_request(
         [&](coro_rpc::coro_rpc_client &client)
             -> Lazy<coro_rpc::rpc_result<rpc_result_t>> {
           co_return co_await client.call<&cqy_app::rpc_ctx_call>(to, func_name,
                                                                  param);
         });
-    co_await async_simple::coro::dispatch(ex);
 
     if (!r) {
       result.status = -4;

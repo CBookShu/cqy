@@ -1,5 +1,8 @@
 #include "game_demo.h"
+#include "async_simple/coro/Generator.h"
+#include "cqy_algo.h"
 #include "cqy_logger.h"
+#include "cqy_utils.h"
 #include "game_component.h"
 #include "msg_define.h"
 #include <cassert>
@@ -7,6 +10,7 @@
 #include <functional>
 #include <memory>
 #include <openssl/ct.h>
+#include <string_view>
 #include <typeindex>
 #include <utility>
 #include <vector>
@@ -21,8 +25,6 @@ bool ws_server_t::on_init(std::string_view param) {
     CQY_ERROR("ws_server param: thread,port,cert_path,key_path,passwd", param);
     return false;
   }
-  register_rpc_func<&ws_server_t::rpc_set_allocer>("set_allocer");
-  register_rpc_func<&ws_server_t::rpc_sub>("sub");
 
   try {
     auto thread = cqy::algo::to_n<size_t>(params[0]);
@@ -57,11 +59,11 @@ bool ws_server_t::on_init(std::string_view param) {
 cqy::Lazy<void> ws_server_t::on_msg(cqy::cqy_str& s) { 
   auto msg = s.msg();
   try {
-    if (msg->type == 1) {
+    if (msg->type == cqy::algo::to_underlying(gate_msg_type_t::write)) {
       // write
       auto [connid, str] = unpack<uint64_t, std::string>(msg->buffer());
       async_call(co_conn_write(connid, std::move(str)));
-    } else if(msg->type == 2) {
+    } else if(msg->type == cqy::algo::to_underlying(gate_msg_type_t::close)) {
       // close
       auto connid = unpack<uint64_t>(msg->buffer());
       auto conn = get_con(connid);
@@ -83,41 +85,11 @@ void ws_server_t::on_stop() {
   }
 }
 
-cqy::Lazy<bool> ws_server_t::rpc_set_allocer(uint32_t id, std::string func_new_alloc) {
-  auto guard = lock.coLock();
-  new_alloc_nodectx = id;
-  new_alloc_func = func_new_alloc;
-  co_return true;
-}
-
-cqy::Lazy<bool> ws_server_t::rpc_sub(uint32_t subid, std::string func_on_start,
-                        std::string func_on_read, std::string func_on_stop) {
-  auto guard = lock.coLock();
-  sub_ctxs[subid] = {
-    .func_on_start = std::move(func_on_start),
-    .func_on_read = std::move(func_on_read),
-    .func_on_stop = std::move(func_on_stop)
-  };
-  co_return true;
-}
-
 cqy::Lazy<uint64_t> ws_server_t::co_get_connid() {
   try {
-    uint32_t to = 0;
-    std::string func;
-    {
-      auto guard = lock.coLock();
-      if (new_alloc_nodectx == 0 || new_alloc_func.empty()) {
-        CQY_ERROR("allocer func not init");
-        co_return 0;
-      }
-      to = new_alloc_nodectx;
-      func = new_alloc_func;
-    }
-    auto r = co_await get_app()->ctx_call<>(to, func);
+    auto r = co_await get_app()->ctx_call_name<>(".gate", "get_allocid");
     co_return r.as<uint64_t>();
   } catch (std::exception &e) {
-    CQY_ERROR("ws alloc func error:{},{}", new_alloc_nodectx, new_alloc_func);
     CQY_ERROR("ws alloc error:{}", e.what());
   }
   co_return 0;
@@ -154,36 +126,15 @@ cqy::sptr<ws_server_t::ws_conn_t> ws_server_t::get_con(uint64_t connid) {
 }
 
 void ws_server_t::pub_conn_start(uint64_t connid) { 
-  auto guard = lock.coLock();
-  for(auto& sub:sub_ctxs) {
-    if (!sub.second.func_on_start.empty()) {
-      get_app()->ctx_call<uint32_t, uint64_t>(
-        sub.first, sub.second.func_on_start, getid(), connid
-      ).start([](auto&&tr){});
-    }
-  }
+  dispatch_pack(".gate", cqy::algo::to_underlying(gate_msg_type_t::ws_start), connid);
 }
 
 void ws_server_t::pub_conn_read(uint64_t connid, std::string_view msg) { 
-  auto guard = lock.coLock();
-  for(auto& sub:sub_ctxs) {
-    if (!sub.second.func_on_read.empty()) {
-      get_app()->ctx_call<uint64_t, std::string_view>(
-        sub.first, sub.second.func_on_read, connid, msg
-      ).start([](auto&&tr){});
-    }
-  }
+  dispatch_pack(".gate", cqy::algo::to_underlying(gate_msg_type_t::ws_msg), connid, msg);
 }
 
 void ws_server_t::pub_conn_stop(uint64_t connid) {
-  auto guard = lock.coLock();
-  for(auto& sub:sub_ctxs) {
-    if (!sub.second.func_on_stop.empty()) {
-      get_app()->ctx_call<uint64_t>(
-        sub.first, sub.second.func_on_stop, connid
-      ).start([](auto&&tr){});
-    }
-  }
+  dispatch_pack(".gate", cqy::algo::to_underlying(gate_msg_type_t::ws_stop), connid);
 }
 
 cqy::Lazy<void> ws_server_t::co_conn_read(uint64_t connid,
@@ -242,17 +193,14 @@ cqy::Lazy<void> ws_server_t::co_ws_start(async_simple::Future<std::error_code> f
 bool gate_t::on_init(std::string_view param) {
   register_name("gate");
   register_rpc_func<&gate_t::rpc_get_allocid, true>("get_allocid");
-  register_rpc_func<&gate_t::rpc_on_conn_start>("on_conn_start");
-  register_rpc_func<&gate_t::rpc_on_msg>("on_msg");
-  register_rpc_func<&gate_t::rpc_on_conn_stop>("on_conn_stop");
+  register_rpc_func<&gate_t::on_conn_start>("on_conn_start");
+  register_rpc_func<&gate_t::on_conn_msg>("on_msg");
+  register_rpc_func<&gate_t::on_conn_stop>("on_conn_stop");
   get_app()->create_ctx("ws_server", param);
   world_id = get_app()->create_ctx("world", "");
   assert(world_id != 0);
   game_id = get_app()->create_ctx("game", "");
   assert(game_id != 0);
-
-  async_call(init_set_allocer());
-  async_call(init_sub());
 
   return true;
 }
@@ -260,7 +208,31 @@ bool gate_t::on_init(std::string_view param) {
 cqy::Lazy<void> gate_t::on_msg(cqy::cqy_str& s) { 
   auto msg = s.msg();
   try {
-    if (msg->type == write) {
+    if(msg->type == cqy::algo::to_underlying(gate_msg_type_t::ws_start)) {
+      async_call([](gate_t* self, cqy::cqy_str s) ->cqy::Lazy<void>{
+        auto msg = s.msg();
+        auto connid = self->unpack<uint64_t>(msg->buffer());
+        co_await self->on_conn_start(msg->from, connid);
+        co_return;
+      }(this, std::move(s)));
+    }
+    else if(msg->type == cqy::algo::to_underlying(gate_msg_type_t::ws_msg)) {
+      async_call([](gate_t* self, cqy::cqy_str s) mutable ->cqy::Lazy<void>{
+        auto msg = s.msg();
+        auto [connid, data] = self->unpack<uint64_t, std::string_view>(msg->buffer());
+        co_await self->on_conn_msg(connid, data);
+        co_return;
+      }(this, std::move(s)));
+    }
+    else if(msg->type == cqy::algo::to_underlying(gate_msg_type_t::ws_stop)) {
+      async_call([](gate_t* self, cqy::cqy_str s) mutable ->cqy::Lazy<void>{
+        auto msg = s.msg();
+        auto connid = self->unpack<uint64_t>(msg->buffer());
+        co_await self->on_conn_stop(connid);
+        co_return;
+      }(this, std::move(s)));
+    }
+    else if (msg->type == cqy::algo::to_underlying(gate_msg_type_t::write)) {
       auto [connid, str] = unpack<uint64_t, std::string_view>(msg->buffer());
       if (msg->from == world_id) {
         game_def::MsgFromWorld w;
@@ -271,7 +243,7 @@ cqy::Lazy<void> gate_t::on_msg(cqy::cqy_str& s) {
         std::ranges::copy(str, std::back_inserter(w.vecByte));
         write_rsp(connid, w);
       }
-    } else if(msg->type == broad) {
+    } else if(msg->type == cqy::algo::to_underlying(gate_msg_type_t::broad)) {
       auto str = unpack<std::string>(msg->buffer());
       for(auto& it:players) {
         if (msg->from == world_id) {
@@ -291,38 +263,15 @@ cqy::Lazy<void> gate_t::on_msg(cqy::cqy_str& s) {
   co_return; 
 }
 
-cqy::Lazy<void> gate_t::init_set_allocer() {
-  auto r = co_await get_app()->ctx_call_name<uint32_t, std::string>(
-    ".ws_server",
-    "set_allocer",
-    getid(),"get_allocid");
-  if (r.has_error()) {
-    CQY_ERROR("ws_server set_allocer error:{}", r.res);
-  }
-  co_return;
-}
-
-cqy::Lazy<void> gate_t::init_sub() {
-  auto r = co_await get_app()->ctx_call_name<uint32_t, std::string, std::string, std::string>(
-    ".ws_server",
-    "sub",
-    getid(), "on_conn_start", "on_msg", "on_conn_stop"
-  );
-  if (r.has_error()) {
-    CQY_ERROR("ws_server sub error:{}", r.res);
-  }
-  co_return;
-}
-
 cqy::Lazy<uint64_t> gate_t::rpc_get_allocid() { co_return ++conn_alloc; }
 
 void gate_t::close_con(uint64_t connid) {
   if (auto it = players.find(connid); it != players.end()) {
-    write_pack(connid, it->second.from, write_type::close);
+    write_pack(connid, it->second.from, cqy::algo::to_underlying(gate_msg_type_t::close));
   }
 }
 
-cqy::Lazy<void> gate_t::rpc_on_conn_start(uint32_t from, uint64_t connid) { 
+cqy::Lazy<void> gate_t::on_conn_start(uint32_t from, uint64_t connid) { 
   CQY_INFO("conn id:{} start", connid);
   players[connid] = {
     .login = false,
@@ -334,7 +283,7 @@ cqy::Lazy<void> gate_t::rpc_on_conn_start(uint32_t from, uint64_t connid) {
   co_return; 
 }
 
-cqy::Lazy<void> gate_t::rpc_on_msg(uint64_t connid, std::string_view msg) { 
+cqy::Lazy<void> gate_t::on_conn_msg(uint64_t connid, std::string_view msg) { 
   CQY_INFO("conn id:{} msg:{}", connid, msg);
   try {
     msg_code_t codec;
@@ -354,11 +303,11 @@ cqy::Lazy<void> gate_t::rpc_on_msg(uint64_t connid, std::string_view msg) {
   co_return; 
 }
 
-cqy::Lazy<void> gate_t::rpc_on_conn_stop(uint64_t connid) { 
+cqy::Lazy<void> gate_t::on_conn_stop(uint64_t connid) { 
   CQY_INFO("conn id:{} stop", connid);
   auto& p = players[connid];
-  dispatch_pack(world_id, close, connid);
-  dispatch_pack(game_id, close, connid);
+  dispatch_pack(world_id, cqy::algo::to_underlying(gate_msg_type_t::close), connid);
+  dispatch_pack(game_id, cqy::algo::to_underlying(gate_msg_type_t::close), connid);
   players.erase(connid);
   co_return; 
 }
@@ -422,7 +371,7 @@ bool world_t::on_init(std::string_view param) {
 cqy::Lazy<void> world_t::on_msg(cqy::cqy_str& s) { 
   auto msg = s.msg();
   try {
-    if (msg->type == gate_t::close) {
+    if (msg->type == cqy::algo::to_underlying(gate_msg_type_t::close)) {
       auto connid = unpack<uint64_t>(msg->buffer());
       if (auto it = logins.find(connid); it != logins.end()) {
         name2conid.erase(it->second.name);
@@ -443,7 +392,7 @@ cqy::Lazy<game_def::MsgLoginResponce> world_t::rpc_player_login(
   try {
     if (auto it = name2conid.find(login.name); it != name2conid.end()) {
       // 重复登录，踢掉老的那个
-      dispatch_pack(".gate", gate_t::close, it->second);
+      dispatch_pack(".gate", cqy::algo::to_underlying(gate_msg_type_t::close), it->second);
       name2conid.erase(it);
     }
 
@@ -487,7 +436,7 @@ bool game_t::on_init(std::string_view param) {
 cqy::Lazy<void> game_t::on_msg(cqy::cqy_str& s) { 
   auto msg = s.msg();
   try {
-    if (msg->type == gate_t::close) {
+    if (msg->type == cqy::algo::to_underlying(gate_msg_type_t::close)) {
       auto connid = unpack<uint64_t>(msg->buffer());
       if(auto it = players.find(connid); it != players.end()) {
         name2id.erase(it->second.name);

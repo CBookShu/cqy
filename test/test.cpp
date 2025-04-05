@@ -1,5 +1,8 @@
 #include "cqy_handle.h"
+#include "cqy_logger.h"
+#include "cqy_utils.h"
 #include "ylt/coro_io/coro_io.hpp"
+#include <cstddef>
 #include <optional>
 #include <thread>
 #define DOCTEST_CONFIG_IMPLEMENT
@@ -481,4 +484,41 @@ TEST_CASE("ctx:find_ctx") {
 
   t1.join();
   t2.join();
+}
+
+TEST_CASE("ctx:async_call") {
+  using namespace cqy;
+  using namespace std;
+  cqy_app app;
+  struct trace {
+    std::string s;
+    trace() {
+      CQY_INFO("trace begin");
+    }
+    ~trace() {
+      CQY_INFO("trace end");
+    }
+  };
+  struct ctx_test1 : public cqy_ctx {
+    uint32_t send_id = 0;
+    virtual bool on_init(std::string_view param) override {
+      register_name("ctx_test1");
+      async_call([](ctx_test1* self, std::string s) -> cqy::Lazy<void>{
+        co_await self->test(std::move(s));
+      }(this, "hello test"));
+      return true;
+    }
+    Lazy<void> test(std::string s) {
+      CHECK(s == "hello test");
+      get_app()->stop();
+      co_return;
+    }
+  };
+  app.reg_ctx<ctx_test1>("test");
+  app.get_config().nodeid = 1;
+  app.get_config().nodes.push_back({
+    .name = "n1", .ip = "127.0.0.1", .nodeid = 1,  .port = 8888}
+  );
+  app.get_config().bootstrap = "test";
+  app.start();
 }

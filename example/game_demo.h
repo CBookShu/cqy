@@ -22,12 +22,20 @@
 #include "entity.h"
 #include "ylt/thirdparty/async_simple/coro/Generator.h"
 
+enum class gate_msg_type_t {
+  ws_start = 1,
+  ws_msg = 2,
+  ws_stop = 3,
+
+  write = 4,
+  close = 5,
+  broad = 6,
+};
+
 struct ws_server_t : public cqy::cqy_ctx {
   cqy::uptr<coro_http::coro_http_server> server;
   // guard by lock
   cqy::coro_spinlock lock;
-  uint32_t new_alloc_nodectx = 0;
-  std::string new_alloc_func;
   struct ws_conn_t {
     cqy::wptr<cinatra::coro_http_connection> conn;
     cqy::coro_mutex lock;   // write buf
@@ -38,7 +46,6 @@ struct ws_server_t : public cqy::cqy_ctx {
     std::string func_on_read;
     std::string func_on_stop;
   };
-  std::unordered_map<uint32_t, sub_info_t> sub_ctxs;
   /*
     param format: thread,port,cert_path,key_path,passwd
   */
@@ -47,11 +54,6 @@ struct ws_server_t : public cqy::cqy_ctx {
   virtual cqy::Lazy<void> on_msg(cqy::cqy_str& msg) override;
 
   virtual void on_stop() override;
-
-  cqy::Lazy<bool> rpc_set_allocer(uint32_t id, std::string func_new_alloc);
-
-  cqy::Lazy<bool> rpc_sub(uint32_t subid, std::string func_on_start,
-                          std::string func_on_read, std::string func_on_stop);
 
   cqy::Lazy<uint64_t> co_get_connid();
 
@@ -75,14 +77,6 @@ struct ws_server_t : public cqy::cqy_ctx {
 };
 
 struct gate_t : public cqy::cqy_ctx {
-  enum write_type {
-    none = 0,
-    write = 1,
-    close = 2,
-
-    broad = 3,
-  };
-
   std::atomic_int64_t conn_alloc = 0;
 
   struct player {
@@ -103,11 +97,6 @@ struct gate_t : public cqy::cqy_ctx {
 
   virtual cqy::Lazy<void> on_msg(cqy::cqy_str& s) override;
 
-  cqy::Lazy<void> init_set_allocer();
-
-  cqy::Lazy<void> init_sub();
-
-
   cqy::Lazy<uint64_t> rpc_get_allocid();
 
   template<typename... Args>
@@ -120,18 +109,17 @@ struct gate_t : public cqy::cqy_ctx {
     if (auto it = players.find(connid); it != players.end()) {
       ++it->second.recv_sign;
       arg.head.sn = it->second.recv_sign;
-      write_pack(connid, it->second.from, write_type::write, msg_code_t::pack(std::forward<Arg>(arg)));
+      write_pack(connid, it->second.from, cqy::algo::to_underlying(gate_msg_type_t::write), msg_code_t::pack(std::forward<Arg>(arg)));
     }
   }
 
   void close_con(uint64_t connid);
 
+  cqy::Lazy<void> on_conn_start(uint32_t from, uint64_t connid);
 
-  cqy::Lazy<void> rpc_on_conn_start(uint32_t from, uint64_t connid);
+  cqy::Lazy<void> on_conn_msg(uint64_t connid, std::string_view msg);
 
-  cqy::Lazy<void> rpc_on_msg(uint64_t connid, std::string_view msg);
-
-  cqy::Lazy<void> rpc_on_conn_stop(uint64_t connid);
+  cqy::Lazy<void> on_conn_stop(uint64_t connid);
 
   // 
   cqy::Lazy<void> co_login(uint64_t connid, msg_code_t& codec, std::string_view msg);
@@ -151,12 +139,12 @@ struct world_t : public cqy::cqy_ctx {
 
   template <typename Arg>
   void write_notify(uint64_t connid, Arg&&arg) {
-    dispatch_pack(".gate", gate_t::write, connid, msg_code_t::pack(std::forward<Arg>(arg)));
+    dispatch_pack(".gate", cqy::algo::to_underlying(gate_msg_type_t::write), connid, msg_code_t::pack(std::forward<Arg>(arg)));
   }
 
   template <typename Arg>
   void broad_notify(Arg&&arg) {
-    dispatch_pack(".gate", gate_t::broad, msg_code_t::pack(std::forward<Arg>(arg)));
+    dispatch_pack(".gate", cqy::algo::to_underlying(gate_msg_type_t::broad), msg_code_t::pack(std::forward<Arg>(arg)));
   }
 
   cqy::Lazy<game_def::MsgLoginResponce> rpc_player_login(
@@ -232,17 +220,17 @@ struct game_t : public cqy::cqy_ctx {
   }
 
   void write_data(uint64_t connid, const std::string& data) {
-    dispatch_pack(".gate", gate_t::write, connid, data);
+    dispatch_pack(".gate", cqy::algo::to_underlying(gate_msg_type_t::write), connid, data);
   }
 
   template <typename Arg>
   void write_notify(uint64_t connid, Arg&&arg) {
-    dispatch_pack(".gate", gate_t::write, connid, msg_code_t::pack(std::forward<Arg>(arg)));
+    dispatch_pack(".gate", cqy::algo::to_underlying(gate_msg_type_t::write), connid, msg_code_t::pack(std::forward<Arg>(arg)));
   }
 
   template <typename Arg>
   void broad_notify(Arg&&arg) {
-    dispatch_pack(".gate", gate_t::broad, msg_code_t::pack(std::forward<Arg>(arg)));
+    dispatch_pack(".gate", cqy::algo::to_underlying(gate_msg_type_t::broad), msg_code_t::pack(std::forward<Arg>(arg)));
   }
 
   cqy::Lazy<void> rpc_add_player(uint64_t connid, game_def::MsgLogin login);
