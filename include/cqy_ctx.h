@@ -157,7 +157,7 @@ Lazy<rpc_result_t> cqy_ctx::ctx_call_name(std::string_view nodectx,
           co_return co_await client.call<&cqy_app::rpc_ctx_call_name>(
               nodectx, func_name, param);
         });
-    ctx_lock().lock();
+    co_await ctx_lock().coLock();
     if (!r) {
       result.status = -4;
       // result.res = r.error();
@@ -201,7 +201,7 @@ Lazy<rpc_result_t> cqy_ctx::ctx_call(uint32_t to, std::string_view func_name,
           co_return co_await client.call<&cqy_app::rpc_ctx_call>(to, func_name,
                                                                  param);
         });
-    ctx_lock().lock();
+    co_await ctx_lock().coLock();
     
     if (!r) {
       result.status = -4;

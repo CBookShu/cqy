@@ -336,13 +336,13 @@ TEST_CASE("ctx:rpc") {
       return true;
     }
     Lazy<void> test_rpc() {
-      auto r = co_await get_app()->ctx_call_name<int, std::string>("n2.ctx_test2", "get_rpc_test_21", 1, "hello");
+      auto r = co_await ctx_call_name<int, std::string>("n2.ctx_test2", "get_rpc_test_21", 1, "hello");
       CHECK(r.as<int>() == 6);
-      r = co_await get_app()->ctx_call_name<int, std::string>("n2.ctx_test2", "get_rpc_test_20", 1, "hello");
+      r = co_await ctx_call_name<int, std::string>("n2.ctx_test2", "get_rpc_test_20", 1, "hello");
       CHECK(!r.has_error());
-      r = co_await get_app()->ctx_call_name<int>("n2.ctx_test2", "get_rpc_test_11", 1);
+      r = co_await ctx_call_name<int>("n2.ctx_test2", "get_rpc_test_11", 1);
       CHECK(r.as<int>() == 1);
-      r = co_await get_app()->ctx_call_name<int>("n2.ctx_test2", "get_rpc_test_10", 1);
+      r = co_await ctx_call_name<int>("n2.ctx_test2", "get_rpc_test_10", 1);
       CHECK(!r.has_error());
       get_app()->stop();
       co_return;

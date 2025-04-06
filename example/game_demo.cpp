@@ -87,7 +87,7 @@ void ws_server_t::on_stop() {
 
 cqy::Lazy<uint64_t> ws_server_t::co_get_connid() {
   try {
-    auto r = co_await get_app()->ctx_call_name<>(".gate", "get_allocid");
+    auto r = co_await ctx_call_name<>(".gate", "get_allocid");
     co_return r.as<uint64_t>();
   } catch (std::exception &e) {
     CQY_ERROR("ws alloc error:{}", e.what());
@@ -292,7 +292,7 @@ cqy::Lazy<void> gate_t::on_conn_msg(uint64_t connid, std::string_view msg) {
     if (head.id == game_def::Login) {
       co_return co_await co_login(connid, codec, msg);
     } else {
-      co_await get_app()->ctx_call_name<uint64_t, std::string_view>(
+      co_await ctx_call_name<uint64_t, std::string_view>(
         ".game", "on_client", connid, msg
       );
     }
@@ -342,7 +342,7 @@ cqy::Lazy<void> gate_t::co_login(uint64_t connid, msg_code_t& codec, std::string
   }
 
   // send to login ctx
-  auto r = co_await get_app()->ctx_call_name<uint64_t,game_def::MsgLogin>(
+  auto r = co_await ctx_call_name<uint64_t,game_def::MsgLogin>(
     ".world", "player_login", connid, login
   );
 
@@ -351,7 +351,7 @@ cqy::Lazy<void> gate_t::co_login(uint64_t connid, msg_code_t& codec, std::string
   if (rsp.result == game_def::MsgLoginResponce::Ok) {
     p.login = true;
 
-    co_await get_app()->ctx_call_name<uint64_t,game_def::MsgLogin>(
+    co_await ctx_call_name<uint64_t,game_def::MsgLogin>(
       ".game", "add_player", connid, login
     );
 
