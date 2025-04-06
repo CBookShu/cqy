@@ -42,11 +42,11 @@ struct node_ping : public cqy_ctx {
       func_name -> 是 node_pong register_rpc_func<&node_pong::rpc_pong>("rpc_pong");
       所以下面是在远程调用 node_pong::rpc_pong 函数，并把结果返回
       */
-      auto r = co_await get_app()->ctx_call_name<std::string_view>(
+      auto r = co_await ctx_call_name<std::string_view>(
           "n1.pong", "rpc_pong", "hello");
       CQY_INFO("rpc_pong res:{}", r.as<size_t>());
 
-      r = co_await get_app()->ctx_call_name<std::string_view>("n1.pong", "rpc_pong1",
+      r = co_await ctx_call_name<std::string_view>("n1.pong", "rpc_pong1",
                                                         "hello");
       assert(!r.has_error());
 
