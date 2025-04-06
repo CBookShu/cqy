@@ -87,7 +87,7 @@ void ws_server_t::on_stop() {
 
 cqy::Lazy<uint64_t> ws_server_t::co_get_connid() {
   try {
-    auto r = co_await ctx_call_name<>(".gate", "get_allocid");
+    auto r = co_await ctx_call_name_nolock<>(".gate", "get_allocid");
     co_return r.as<uint64_t>();
   } catch (std::exception &e) {
     CQY_ERROR("ws alloc error:{}", e.what());

@@ -50,6 +50,14 @@ public:
   Lazy<rpc_result_t> ctx_call_name(std::string_view nodectx,
                                    std::string_view func_name, Args &&...args);
 
+  template <typename... fArgs, typename... Args>
+  Lazy<rpc_result_t> ctx_call_nolock(uint32_t to, std::string_view func_name,
+                              Args &&...args);
+
+  template <typename... fArgs, typename... Args>
+  Lazy<rpc_result_t> ctx_call_name_nolock(std::string_view nodectx,
+                                  std::string_view func_name, Args &&...args);
+
   template <typename...Args>
   auto unpack(std::string_view msg);
 
@@ -121,102 +129,118 @@ uint32_t cqy_ctx::dispatch_pack(uint32_t id, uint8_t t, Args&&...args) {
   return dispatch(id, t, msg);
 }
 
-template <typename... fArgs, typename... Args>
+template <typename... fArgs,  typename... Args>
 Lazy<rpc_result_t> cqy_ctx::ctx_call_name(std::string_view nodectx,
                                           std::string_view func_name,
                                           Args &&...args) {
-  rpc_result_t result{};
-  auto* app = get_app();
-  auto p = app->get_handle(nodectx);
-  if (!p) {
-    result.status = -1;
-    result.res = std::format("nodectx:{} miss", nodectx);
-    co_return result;
-  }
-  auto nodeid = p->first.node();
-  auto ctx_name = p->second;
-  auto &config = app->get_config();
-  if (nodeid == config.nodeid) {
-    std::string param;
-    rpc_encode<fArgs...>(param, std::forward<Args>(args)...);
-    co_return co_await app->rpc_ctx_call_name(nodectx, func_name, param);
-  } else {
-    auto n = app->get_node().get_node(nodeid);
-    if (!n) {
-      result.status = -2;
-      result.res = std::format("nodeid:{} config miss", nodeid);
-      co_return result;
-    }
-    std::string param;
-    rpc_encode<fArgs...>(param, std::forward<Args>(args)...);
+  ctx_lock().unlock();
+  auto r = co_await ctx_call_name_nolock<fArgs...>(nodectx, func_name,
+                                               std::forward<Args>(args)...);
+  ctx_lock().lock();
+  co_return r;
+}
 
-    ctx_lock().unlock();
-    auto r = co_await n->rpc_client->send_request(
-        [&](coro_rpc::coro_rpc_client &client)
-            -> Lazy<coro_rpc::rpc_result<rpc_result_t>> {
-          co_return co_await client.call<&cqy_app::rpc_ctx_call_name>(
-              nodectx, func_name, param);
-        });
-    co_await ctx_lock().coLock();
-    if (!r) {
-      result.status = -4;
-      // result.res = r.error();
-      co_return result;
-    }
-
-    if (!r.value()) {
-      result.status = -4;
-      // result.res = r.value().error();
-      co_return result;
-    }
-    co_return std::move(r.value().value());
-  }
+template <typename... fArgs,  typename... Args>
+Lazy<rpc_result_t> cqy_ctx::ctx_call(uint32_t to, std::string_view func_name,
+                                     Args &&...args) {
+  ctx_lock().unlock();
+  auto r = co_await ctx_call_nolock<fArgs...>(to, func_name,
+                                           std::forward<Args>(args)...);
+  ctx_lock().lock();
+  co_return r;
 }
 
 template <typename... fArgs, typename... Args>
-Lazy<rpc_result_t> cqy_ctx::ctx_call(uint32_t to, std::string_view func_name,
-                                     Args &&...args) {
-  cqy_handle_t h(to);
-  rpc_result_t result{};
-  auto* app = get_app();
-  auto &config = app->get_config();
-  if (h.nodeid == config.nodeid) {
-    std::string param;
-    rpc_encode<fArgs...>(param, std::forward<Args>(args)...);
-    co_return co_await app->rpc_ctx_call(to, func_name, param);
-  } else {
-    auto n = app->get_node().get_node(h.node());
-    if (!n) {
-      result.status = -2;
-      result.res = std::format("nodeid:{} config miss", h.nodeid);
-      co_return result;
-    }
-    std::string param;
-    rpc_encode<fArgs...>(param, std::forward<Args>(args)...);
-
-    ctx_lock().unlock();
-    auto r = co_await n->rpc_client->send_request(
-        [&](coro_rpc::coro_rpc_client &client)
-            -> Lazy<coro_rpc::rpc_result<rpc_result_t>> {
-          co_return co_await client.call<&cqy_app::rpc_ctx_call>(to, func_name,
-                                                                 param);
-        });
-    co_await ctx_lock().coLock();
+Lazy<rpc_result_t> cqy_ctx::ctx_call_nolock(uint32_t to, std::string_view func_name,
+                            Args &&...args) {
+      cqy_handle_t h(to);
+      rpc_result_t result{};
+      auto* app = get_app();
+      auto &config = app->get_config();
+      if (h.nodeid == config.nodeid) {
+        std::string param;
+        rpc_encode<fArgs...>(param, std::forward<Args>(args)...);
     
-    if (!r) {
-      result.status = -4;
-      /*result.res = r.error();*/
-      co_return result;
-    }
-
-    if (!r.value()) {
-      result.status = -4;
-      // result.res = r.value().error();
-      co_return result;
-    }
-    co_return std::move(r.value().value());
-  }
+        co_return co_await app->rpc_ctx_call(to, func_name, param);
+      } else {
+        auto n = app->get_node().get_node(h.node());
+        if (!n) {
+          result.status = -2;
+          result.res = std::format("nodeid:{} config miss", h.nodeid);
+          co_return result;
+        }
+        std::string param;
+        rpc_encode<fArgs...>(param, std::forward<Args>(args)...);
+    
+        auto r = co_await n->rpc_client->send_request(
+            [&](coro_rpc::coro_rpc_client &client)
+                -> Lazy<coro_rpc::rpc_result<rpc_result_t>> {
+              co_return co_await client.call<&cqy_app::rpc_ctx_call>(to, func_name,
+                                                                      param);
+            });
+        if (!r) {
+          result.status = -4;
+          /*result.res = r.error();*/
+          co_return result;
+        }
+    
+        if (!r.value()) {
+          result.status = -4;
+          // result.res = r.value().error();
+          co_return result;
+        }
+        co_return std::move(r.value().value());
+      }
 }
 
+template <typename... fArgs, typename... Args>
+Lazy<rpc_result_t> cqy_ctx::ctx_call_name_nolock(std::string_view nodectx,
+                                std::string_view func_name, Args &&...args) {
+    rpc_result_t result{};
+    auto* app = get_app();
+    auto p = app->get_handle(nodectx);
+    if (!p) {
+      result.status = -1;
+      result.res = std::format("nodectx:{} miss", nodectx);
+      co_return result;
+    }
+    auto nodeid = p->first.node();
+    auto ctx_name = p->second;
+    auto &config = app->get_config();
+    if (nodeid == config.nodeid) {
+      std::string param;
+      rpc_encode<fArgs...>(param, std::forward<Args>(args)...);
+  
+      co_return co_await app->rpc_ctx_call_name(nodectx, func_name, param);
+    } else {
+      auto n = app->get_node().get_node(nodeid);
+      if (!n) {
+        result.status = -2;
+        result.res = std::format("nodeid:{} config miss", nodeid);
+        co_return result;
+      }
+      std::string param;
+      rpc_encode<fArgs...>(param, std::forward<Args>(args)...);
+  
+      auto r = co_await n->rpc_client->send_request(
+          [&](coro_rpc::coro_rpc_client &client)
+              -> Lazy<coro_rpc::rpc_result<rpc_result_t>> {
+            co_return co_await client.call<&cqy_app::rpc_ctx_call_name>(
+                nodectx, func_name, param);
+          });
+      if (!r) {
+        result.status = -4;
+        // result.res = r.error();
+        co_return result;
+      }
+  
+      if (!r.value()) {
+        result.status = -4;
+        // result.res = r.value().error();
+        co_return result;
+      }
+      co_return std::move(r.value().value());
+    }
+}
 
 } // namespace cqy
