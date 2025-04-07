@@ -156,7 +156,7 @@ struct world_t : public cqy::cqy_ctx {
 struct game_t;
 struct scene_t;
 struct scene_config_t {
-  using co_task_func = cqy::Lazy<void>(game_t::*)(cqy::sptr<scene_t> s, std::string player);
+  using co_task_func = cqy::coro_gen<size_t>(game_t::*)(cqy::sptr<scene_t> s, std::string player);
   game_def::SceneID id;
   std::string strCrowdPath;
   std::string strSceneName;
@@ -172,21 +172,10 @@ struct scene_t {
   std::unordered_set<uint64_t> entitys;
   std::unordered_map<uint64_t, uint64_t> connid2eid;
   sys_clock_t::time_point tp;
-  size_t wait_idx = 0;
-  async_simple::coro::Notifier notify;
+  cqy::coro_gen<size_t>::iterator gen;
 
   entity_t create_entity();
   entity_t geteid_fromconnid(uint64_t connid);
-  
-  template <typename T>
-  void wait_status() {
-    wait_idx = std::type_index(typeid(T)).hash_code();
-  }
-  template <typename T>
-  bool check_status() {
-    return wait_idx == std::type_index(typeid(T)).hash_code();
-  }
-
 
   const std::string& headName(entity_id_t id);
   game_def::MsgAddRoleRet pack_addRoleRet(entity_id_t id);
@@ -244,5 +233,5 @@ struct game_t : public cqy::cqy_ctx {
   void destroy_scene(scene_t& s);
   void enter_scene(player& p, cqy::sptr<scene_t>& s);
 
-  cqy::Lazy<void> scene1_task(cqy::sptr<scene_t> S, std::string player);
+  cqy::coro_gen<size_t> scene1_task(cqy::sptr<scene_t> S, std::string player);
 };

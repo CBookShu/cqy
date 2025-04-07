@@ -14,6 +14,8 @@
 #include <ylt/thirdparty/async_simple/coro/SpinLock.h>
 #include <ylt/util/type_traits.h>
 
+#include "cqy_gen.h"
+
 namespace cqy {
 struct string_hash {
   using is_transparent = void;
@@ -174,6 +176,8 @@ using coro_sharedlock = async_simple::coro::SharedMutex;
 using coro_mutex = async_simple::coro::Mutex;
 
 template <typename M> using coro_cv = async_simple::coro::ConditionVariable<M>;
+
+template <typename T> using coro_gen = cqy::coro::Generator<T>;
 
 template <typename T> using sptr = std::shared_ptr<T>;
 

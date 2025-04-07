@@ -58,7 +58,7 @@
  #include "async_simple/experimental/coroutine.h"
  #endif
  
- namespace cqy::async_simple::ranges {
+ namespace cqy::ranges {
  
  // For internal use only, for compatibility with lower version standard
  // libraries
@@ -113,14 +113,14 @@
  
  }  // namespace async_simple::ranges
  
- namespace cqy::async_simple::coro::detail {
+ namespace cqy::coro::detail {
  
  template <class yield>
  struct gen_promise_base;
  
  }  // namespace async_simple::coro::detail
  
- namespace cqy::async_simple::coro {
+ namespace cqy::coro {
  
  // clang-format off
  /**
@@ -454,7 +454,7 @@
      };
  
      template <class Ref, class V, class Alloc>
-     friend class async_simple::coro::Generator;
+     friend class cqy::coro::Generator;
  
      std::add_pointer_t<yielded> value_ = nullptr;
      std::coroutine_handle<gen_promise_base> top_ =
@@ -536,7 +536,7 @@
      using value_type = value;
      using difference_type = std::ptrdiff_t;
  
-     explicit iterator(Handle coro) noexcept : _coro(coro) {}
+     explicit iterator(Handle coro = nullptr) noexcept : _coro(coro) {}
      ~iterator() {
          if (_coro) {
              if (!_coro.done()) {
@@ -550,8 +550,9 @@
          : _coro(std::exchange(rhs._coro, nullptr)) {}
  
      iterator& operator=(iterator&& rhs) {
-         logicAssert(!_coro, "Should not own a coroutine handle");
+        ::async_simple::logicAssert(!_coro, "Should not own a coroutine handle");
          _coro = std::exchange(rhs._coro, nullptr);
+         return *this;
      }
  
      explicit operator bool() const noexcept { return _coro && !_coro.done(); }
@@ -631,7 +632,7 @@
  
  template <class Ref, class V, class Allocator>
  inline constexpr bool
-     std::ranges::enable_view<cqy::async_simple::coro::Generator<Ref, V, Allocator>> =
+     std::ranges::enable_view<cqy::coro::Generator<Ref, V, Allocator>> =
          true;
  
  #endif  // __has_include(<generator>)

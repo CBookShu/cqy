@@ -525,7 +525,7 @@ TEST_CASE("ctx:async_call") {
 }
 
 TEST_CASE("Generator Standalone") {
-  using namespace cqy::async_simple::coro;
+  using namespace cqy::coro;
   {
     auto lambda = []() -> Generator<size_t> {
         co_yield 0;

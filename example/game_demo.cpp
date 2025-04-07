@@ -494,7 +494,7 @@ void game_t::on_recv(uint64_t connid, game_def::MsgEnterSingleScene msg) {
   auto [bNew, Scene] = get_scene1(p.name, c);
   enter_scene(p, Scene);
   if (bNew) {
-    async_call(std::invoke(c.func, this, Scene, p.name));
+    Scene->gen = std::invoke(c.func, this, Scene, p.name).begin();
   }
 }
 
@@ -502,8 +502,8 @@ void game_t::on_recv(uint64_t connid, game_def::MsgPlotEnd msg) {
   auto& p = players.at(connid);
   if(auto it = scene1_map.find(p.name); it != scene1_map.end()) {
     auto S = it->second;
-    if (S->check_status<game_def::MsgPlotEnd>()) {
-      S->notify.notify();
+    if (S->gen) {
+      ++S->gen;
     }
   }
 }
@@ -553,13 +553,11 @@ void game_t::enter_scene(player& p, cqy::sptr<scene_t>& s) {
   viewe.add<AoiComponent>(500);   // 视野默认500
 }
 
-cqy::Lazy<void> game_t::scene1_task(cqy::sptr<scene_t> S, std::string player) {
+cqy::coro_gen<size_t> game_t::scene1_task(cqy::sptr<scene_t> S, std::string player) {
   auto connid = S->game->get_player_connid(player);
   auto e = S->geteid_fromconnid(connid);
 
-  #define WAIT_TYPE(t)  S->wait_idx = std::type_index(typeid(t)).hash_code(); \
-    co_await S->notify.wait();  \
-    S->notify.reset();
+  #define WAIT_TYPE(t)  co_yield std::type_index(typeid(t)).hash_code();
 
   auto f_lingyun_say = [&](const std::string& strMsg){
     static_interface::npc1_say(*S, player,
