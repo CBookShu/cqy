@@ -9,6 +9,7 @@
 #include <thread>
 #include "cqy.h"
 #include "cqy_ctx_mgr.h"
+#include "cqy_gen.h"
 
 int main(int argc, char** argv) { 
   return doctest::Context(argc, argv).run(); 
@@ -521,4 +522,60 @@ TEST_CASE("ctx:async_call") {
   );
   app.get_config().bootstrap = "test";
   app.start();
+}
+
+TEST_CASE("Generator Standalone") {
+  using namespace cqy::async_simple::coro;
+  {
+    auto lambda = []() -> Generator<size_t> {
+        co_yield 0;
+        co_yield 1;
+        co_yield 2;
+    };
+    Generator<size_t>::iterator it = lambda().begin();
+    CHECK(*it == 0);
+    ++it;
+    CHECK(*it == 1);
+    ++it;
+    CHECK(*it == 2);
+    CHECK(it);   
+}
+{
+    struct trace {
+        bool& ok;
+        trace(bool& ok_):ok(ok_) {
+            ok = true;
+        }
+        ~trace() {
+            ok = false;
+        }
+    };
+    bool ok = true;
+    {
+        auto lambda = [&]() -> Generator<size_t> {
+            trace t(ok);
+            co_yield 0;
+            co_yield 1;
+            co_yield 2;
+        };
+        auto it = lambda().begin();
+        CHECK(it);
+        CHECK(ok);
+        // it destroy -> lambda coro destroy -> ~trace -> ok = false
+    }
+    CHECK(!ok);
+    {
+        auto lambda = [&]() -> Generator<size_t> {
+            trace t(ok);
+            co_yield 0;
+            co_yield 1;
+            co_yield 2;
+        };
+        auto it = lambda().begin();
+        CHECK(it);
+        CHECK(ok);
+        it.destroy();   // lambda coro destroy -> ~trace -> ok = false
+        CHECK(!ok);
+    }
+}
 }
