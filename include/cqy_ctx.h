@@ -52,15 +52,6 @@ public:
   Lazy<rpc_result_t> ctx_call_name(std::string_view nodectx,
                                    std::string_view func_name, Args &&...args);
 
-  template <typename... fArgs, typename... Args>
-  Lazy<rpc_result_t> ctx_call_nolock(uint32_t to, std::string_view func_name,
-                                     Args &&...args);
-
-  template <typename... fArgs, typename... Args>
-  Lazy<rpc_result_t> ctx_call_name_nolock(std::string_view nodectx,
-                                          std::string_view func_name,
-                                          Args &&...args);
-
   template <typename... Args> auto unpack(std::string_view msg);
 
   cqy_app *get_app();
@@ -73,7 +64,15 @@ public:
 
 protected:
   void register_name(std::string name);
+  
+  template <typename... fArgs, typename... Args>
+  Lazy<rpc_result_t> ctx_call_nolock(uint32_t to, std::string_view func_name,
+                                     Args &&...args);
 
+  template <typename... fArgs, typename... Args>
+  Lazy<rpc_result_t> ctx_call_name_nolock(std::string_view nodectx,
+                                          std::string_view func_name,
+                                          Args &&...args);
 private:
   friend class cqy_app;
   Lazy<void> wait_msg_spawn(sptr<cqy_ctx> self);
