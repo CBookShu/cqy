@@ -26,12 +26,12 @@ namespace cqy {
   };
   
   template<class F>
-  inline FinalAction<F> _finally(const F &f) noexcept {
+  inline FinalAction<F> _finally__(const F &f) noexcept {
       return FinalAction<F>(f);
   }
   
   template<class F>
-  inline FinalAction<F> _finally(F &&f) noexcept {
+  inline FinalAction<F> _finally__(F &&f) noexcept {
       return FinalAction<F>(std::forward<F>(f));
   }
   
@@ -39,5 +39,5 @@ namespace cqy {
   #define concat2(a, b)       concat1(a, b)
   #define _finally_object     concat2(_finally_object_, __COUNTER__)
   #define finally             cqy::FinalAction _finally_object = [&]()
-  #define finally2(func)      cqy::FinalAction _finally_object = cqy::_finally(func)
+  #define finally2(func)      cqy::FinalAction _finally_object = cqy::_finally__(func)
 }
