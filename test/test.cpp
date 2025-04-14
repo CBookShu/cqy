@@ -11,6 +11,7 @@
 #include "cqy_ctx_mgr.h"
 #include "cqy_gen.h"
 #include "../example/entity.h"
+#include "cqy_finally.h"
 
 int main(int argc, char** argv) { 
   return doctest::Context(argc, argv).run(); 
@@ -218,7 +219,7 @@ TEST_CASE("app:reg ctx") {
       return true;
     }
     Lazy<void> delay_stop() {
-      co_await coro_io::sleep_for(1s);
+      co_await sync_call(coro_io::sleep_for(1s));
       get_app()->stop();
     } 
   };
@@ -433,7 +434,7 @@ TEST_CASE("ctx:find_ctx") {
     Lazy<void> test() {
       auto r = co_await get_app()->rpc_find_ctx("n2.ctx_test2"sv);
       CHECK(r == ctx2_id);
-      co_await coro_io::sleep_for(2s);
+      co_await sync_call(coro_io::sleep_for(2s));
       get_app()->stop();
       co_return;
     }
@@ -462,7 +463,7 @@ TEST_CASE("ctx:find_ctx") {
     }
 
     Lazy<void> test() {
-      co_await coro_io::sleep_for(1s);
+      co_await sync_call(coro_io::sleep_for(1s));
       auto id = co_await get_app()->rpc_find_ctx("n1.ctx_test1"sv);
       CHECK(id == ctx1_id);
       get_app()->stop();
@@ -612,4 +613,36 @@ TEST_CASE("entity_test") {
   auto entitis2 = mgr.entities_with_components<std::string, int>(entitys);
   CHECK(entitis2.size() == 1);
   CHECK(entitis2.front() == e.id);
+}
+
+TEST_CASE("finally_test") {
+  bool b = false;
+  {
+    finally{
+      b = true;
+    };
+  }
+  CHECK(b);
+
+  b = false;
+  {
+    finally2([&](){
+      b = true;
+    });
+  }
+  CHECK(b);
+
+  // order
+  int i = 0;
+  {
+    finally2([&](){
+      CHECK(i == 1);
+      i = 2;
+    });
+    finally2([&](){
+      CHECK(i == 0);
+      i = 1;
+    });
+  }
+  CHECK(i == 2);
 }
