@@ -10,6 +10,7 @@
 #include "cqy.h"
 #include "cqy_ctx_mgr.h"
 #include "cqy_gen.h"
+#include "../example/entity.h"
 
 int main(int argc, char** argv) { 
   return doctest::Context(argc, argv).run(); 
@@ -578,4 +579,37 @@ TEST_CASE("Generator Standalone") {
         CHECK(!ok);
     }
 }
+}
+
+TEST_CASE("entity_test") {
+  entity_mgr_t mgr;
+  auto e = mgr.create();
+  auto* p1 = e.add<int>(1);
+  auto* p2 = e.add<std::string>("hello world");
+  CHECK(*p1 == 1);
+  CHECK(*p2 == "hello world");
+
+  auto [p11] = e.component<int>();
+  auto [p21] = e.component<std::string>();
+  CHECK(p1 == p11);
+  CHECK(p2 == p21);
+
+  auto [p12, p22] = e.component<int, std::string>();
+  CHECK(p12 == p11);
+  CHECK(p22 == p21);
+
+  auto e1 = mgr.create();
+  e1.add<std::string>();
+
+  std::vector<entity_id_t> entitys;
+  entitys.push_back(e.id);
+  entitys.push_back(e1.id);
+  auto entitys1 = mgr.entities_with_components<std::string>(entitys);
+  CHECK(entitys1.size() == 2);
+  CHECK(entitys1[0] == e.id);
+  CHECK(entitys1[1] == e1.id);
+
+  auto entitis2 = mgr.entities_with_components<std::string, int>(entitys);
+  CHECK(entitis2.size() == 1);
+  CHECK(entitis2.front() == e.id);
 }

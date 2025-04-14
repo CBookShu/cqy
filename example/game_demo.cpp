@@ -529,8 +529,7 @@ void game_t::destroy_scene(scene_t& s) {
 void game_t::enter_scene(player& p, cqy::sptr<scene_t>& s) {
   write_notify(p.connid, game_def::MsgEnterSpace{.idSpace = 1});
 
-  for(auto& id:s->entitys) {
-    entity_id_t eid(id);
+  for(auto& eid:s->entitys) {
     auto e = s->entity_mgr.get(eid);
     write_notify(p.connid, s->pack_addRoleRet(eid));
     write_notify(p.connid, s->pack_notifyPos(eid));
@@ -539,7 +538,7 @@ void game_t::enter_scene(player& p, cqy::sptr<scene_t>& s) {
     if(c && !c->compelete()) {
       write_notify(p.connid,
         game_def::MsgEntityDes{
-          .entityId = eid,
+          .entityId = eid.id,
           .strDes = std::format("建造进度{}%", c->process)
         });
     }
@@ -675,9 +674,7 @@ game_def::MsgNotifyPos scene_t::pack_notifyPos(entity_id_t id) {
   return msg;
 }
 
-static void test_entity();
 int main() {
-  // test_entity();
   cqy::cqy_app app;
   app.reg_ctx<ws_server_t>("ws_server");
   app.reg_ctx<gate_t>("gate");
@@ -689,37 +686,4 @@ int main() {
   app.start();
   app.stop();
   return 0;
-}
-
-static void test_entity() {
-  entity_mgr_t mgr;
-  auto e = mgr.create();
-  auto* p1 = e.add<int>(1);
-  auto* p2 = e.add<std::string>("hello world");
-  CQY_INFO("p1:{}", *p1);
-  CQY_INFO("p2:{}", *p2);
-
-  auto [p11] = e.component<int>();
-  auto [p21] = e.component<std::string>();
-  assert(p1 == p11);
-  assert(p2 == p21);
-
-  auto [p12, p22] = e.component<int, std::string>();
-  assert(p12 == p11);
-  assert(p22 == p21);
-
-  auto e1 = mgr.create();
-  e1.add<std::string>();
-
-  std::vector<entity_id_t> entitys;
-  entitys.push_back(e.id);
-  entitys.push_back(e1.id);
-  auto entitys1 = mgr.entities_with_components<std::string>(entitys);
-  assert(entitys1.size() == 2);
-  assert(entitys1[0] == e.id);
-  assert(entitys1[1] == e1.id);
-
-  auto entitis2 = mgr.entities_with_components<std::string, int>(entitys);
-  assert(entitis2.size() == 1);
-  assert(entitis2.front() == e.id);
 }

@@ -169,8 +169,8 @@ struct scene_t {
   game_t* game = nullptr;
   scene_config_t* config = nullptr;
   entity_mgr_t entity_mgr;
-  std::unordered_set<uint64_t> entitys;
-  std::unordered_map<uint64_t, uint64_t> connid2eid;
+  std::unordered_set<entity_id_t, entity_id_t_hash> entitys;
+  std::unordered_map<uint64_t, entity_id_t> connid2eid;
   sys_clock_t::time_point tp;
   cqy::coro_gen<size_t>::iterator gen;
 

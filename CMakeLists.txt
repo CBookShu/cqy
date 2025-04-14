@@ -9,6 +9,14 @@ set(YLT_ENABLE_SSL ON)
 set(MSGPACK_USE_BOOST OFF CACHE BOOL "no boost")
 set(MSGPACK_USE_BOOST OFF)
 
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+    message(STATUS "Support ccache")
+    set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_PROGRAM})
+else()
+    message(STATUS "Not support ccache")
+endif()
+
 message(STATUS "CMAKE_CXX_COMPILER_ID IS ${CMAKE_CXX_COMPILER_ID}")
 message(STATUS "CMAKE_BUILD_TYPE IS ${CMAKE_BUILD_TYPE}")
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -26,13 +34,10 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     # endif()
     add_compile_options(-fsanitize=address -g)
     link_libraries(asan)
-elseif()
+else()
     add_compile_options("/wd4819")
     add_compile_options("/wd4267")
 endif()
-
-include_directories(3rd/yalantinglibs/src/include)
-link_libraries(yalantinglibs::yalantinglibs)
 
 add_library(cqy STATIC 
     include/cqy_utils.h include/cqy_logger.h
@@ -46,22 +51,24 @@ add_library(cqy STATIC
     include/cqy.h
 )
 target_include_directories(cqy PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(cqy PUBLIC 3rd/yalantinglibs/src/include)
+target_link_libraries(cqy PUBLIC yalantinglibs::yalantinglibs)
 
-link_libraries(cqy)
 add_executable(ping example/ping.cpp)
+target_link_libraries(ping PRIVATE cqy)
+
 add_executable(pong example/pong.cpp)
+target_link_libraries(pong PRIVATE cqy)
+
 add_executable(game_demo 
     example/game_demo.cpp 
     example/entity.h example/entity.cpp
     example/game_component.h example/game_component.cpp
     )
-target_link_libraries(game_demo PRIVATE msgpack-cxx)
-# add_executable(msgpack_rpc example/msgpack_rpc.cpp)
-# target_link_libraries(msgpack_rpc PRIVATE msgpack-cxx)
-add_executable(msgpack_codec example/msgpack_codec.cpp)
-target_link_libraries(msgpack_codec PRIVATE msgpack-cxx)
+target_link_libraries(game_demo PRIVATE cqy msgpack-cxx)
 
-add_executable(test test/test.cpp)
+add_executable(test test/test.cpp example/entity.cpp)
+target_link_libraries(test PRIVATE cqy)
 
 add_test(NAME tests COMMAND test)
 add_subdirectory(3rd/yalantinglibs)

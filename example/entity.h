@@ -24,6 +24,16 @@ struct entity_id_t {
   operator uint64_t() {
     return id;
   }
+
+  friend bool operator == (const entity_id_t& l, const entity_id_t&r) {
+    return l.id == r.id;
+  }
+};
+
+struct entity_id_t_hash {
+  size_t operator()(const entity_id_t& id) const {
+    return std::hash<uint64_t>()(id.id);
+  }
 };
 
 struct component_t {
@@ -137,8 +147,7 @@ std::vector<entity_id_t> entity_mgr_t::entities_with_components(C& entitys) {
   auto f_check = [](cqy::uptr<compool>& p, size_t idx) {
     return p && (*p)[idx] && (*p)[idx]->test();
   };
-  for(auto& id:entitys) {
-    entity_id_t eid = id;
+  for(auto& eid:entitys) {
     if (!check(eid)) {
       continue;
     }
