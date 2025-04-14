@@ -645,4 +645,17 @@ TEST_CASE("finally_test") {
     });
   }
   CHECK(i == 2);
+
+  i = 0;
+  {
+    finally{
+      CHECK(i == 1);
+      i = 2;
+    };
+    finally{
+      CHECK(i == 0);
+      i = 1;
+    };
+  }
+  CHECK(i == 2);
 }
