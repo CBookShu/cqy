@@ -34,7 +34,7 @@ namespace cqy {
       using namespace std::chrono_literals;
       CQY_INFO("from {:0x} msg:{}", msg->from, msg->buffer());
       response(msg, echo);
-      co_await coro_io::sleep_for(1s);
+      co_await sync_call(coro_io::sleep_for(1s));
       get_app()->stop();
       CQY_INFO("pong server stop");
       co_return;

@@ -25,7 +25,7 @@ struct node_ping : public cqy_ctx {
     assert(msg->session == last_session);
     assert(msg->response);
     CQY_INFO("from {:0x} msg:{}", msg->from, msg->buffer());
-    co_await coro_io::sleep_for(1s);
+    co_await sync_call(coro_io::sleep_for(1s));
     get_app()->stop();
     CQY_INFO("ping server stop");
     co_return;
