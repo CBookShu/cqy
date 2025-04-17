@@ -590,8 +590,8 @@ TEST_CASE("entity_test") {
   CHECK(*p1 == 1);
   CHECK(*p2 == "hello world");
 
-  auto [p11] = e.component<int>();
-  auto [p21] = e.component<std::string>();
+  auto p11 = e.component<int>();
+  auto p21 = e.component<std::string>();
   CHECK(p1 == p11);
   CHECK(p2 == p21);
 
@@ -613,6 +613,16 @@ TEST_CASE("entity_test") {
   auto entitis2 = mgr.entities_with_components<std::string, int>(entitys);
   CHECK(entitis2.size() == 1);
   CHECK(entitis2.front() == e.id);
+
+  struct test_componet {
+    int a;
+    std::string b;
+  };
+  auto e2 = mgr.create();
+  e2.add<test_componet>(1, "hello world");
+  auto& [a, b] = *e2.component<test_componet>();
+  CHECK(a == 1);
+  CHECK(b == "hello world");
 }
 
 TEST_CASE("finally_test") {

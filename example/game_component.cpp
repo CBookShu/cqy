@@ -23,7 +23,7 @@ void static_interface::npc1_say(scene_t& S,
   auto connid = S.game->get_player_connid(player);
   S.game->write_data(connid, data);
   auto e = S.geteid_fromconnid(connid);
-  auto [p] = e.component<PlayerConn>();
+  auto p = e.component<PlayerConn>();
   if (p) {
     p->msgLastMsg = ntf;
   }

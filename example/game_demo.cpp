@@ -534,7 +534,7 @@ void game_t::enter_scene(player& p, cqy::sptr<scene_t>& s) {
     write_notify(p.connid, s->pack_addRoleRet(eid));
     write_notify(p.connid, s->pack_notifyPos(eid));
 
-    auto [c] = e.component<BuildingComponent>();
+    auto c = e.component<BuildingComponent>();
     if(c && !c->compelete()) {
       write_notify(p.connid,
         game_def::MsgEntityDes{
@@ -604,7 +604,7 @@ cqy::coro_gen<size_t> game_t::scene1_task(cqy::sptr<scene_t> S, std::string play
   static_interface::plotend(*S, player);
   static_interface::say(*S, player,"欢迎来到RTS即时战略游戏，现在您要接受基础的训练", game_def::SayChannel::SYSTEM);
 
-  auto [p] = e.component<PlayerConn>();
+  auto p = e.component<PlayerConn>();
   assert(p);
   p->mineral += 100;
 }

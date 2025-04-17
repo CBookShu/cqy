@@ -1,4 +1,5 @@
 #pragma once 
+#include <tuple>
 #include <vector>
 #include <cstdint>
 #include <atomic>
@@ -75,7 +76,7 @@ struct entity_t {
   T* add(Args&&...args);
 
   template<typename...T>
-  auto component() -> std::tuple<std::add_pointer_t<T>...>;
+  auto component();
 
   void destroy();
 
@@ -160,8 +161,22 @@ std::vector<entity_id_t> entity_mgr_t::entities_with_components(C& entitys) {
 }
 
 template<typename... T>
-auto entity_t::component() ->std::tuple<std::add_pointer_t<T>...> {
-  return std::make_tuple(
-    mgr->component<T>(id)...
-  );
+auto entity_t::component()  {
+  static_assert(sizeof...(T) > 0);
+  if constexpr(sizeof...(T) == 1) {
+    using T0 = std::tuple_element_t<0, std::tuple<T...>>;
+    if (mgr) {
+      return mgr->component<T0>(id);
+    } else {
+      return (T0*)nullptr;
+    }
+  } else {
+    if (mgr) {
+      return std::make_tuple(
+        mgr->component<T>(id)...
+      );
+    } else {
+      return std::tuple<T*...>();
+    }
+  }
 }
