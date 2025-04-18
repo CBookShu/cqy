@@ -37,6 +37,11 @@ if(CMAKE_BUILD_TYPE STREQUAL "Coverage")
     )
 endif()
 
+if(MSVC)
+    add_compile_options("$<$<C_COMPILER_ID:MSVC>:/utf-8>")
+    add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
+endif()
+
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fcoroutines")
     if (CMAKE_CXX_COMPILER_VERSION MATCHES "12.*")
@@ -55,6 +60,7 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 else()
     add_compile_options("/wd4819")
     add_compile_options("/wd4267")
+    add_compile_options("/utf-8")
 endif()
 
 add_library(cqy STATIC 
