@@ -19,23 +19,6 @@ endif()
 
 message(STATUS "CMAKE_CXX_COMPILER_ID IS ${CMAKE_CXX_COMPILER_ID}")
 message(STATUS "CMAKE_BUILD_TYPE IS ${CMAKE_BUILD_TYPE}")
-if(CMAKE_BUILD_TYPE STREQUAL "Coverage")
-    add_compile_options(-fprofile-arcs -ftest-coverage)
-    add_link_options(--coverage)
-
-    find_program(LCOV_PATH lcov)
-    find_program(GENHTML_PATH genhtml)
-
-    add_custom_target(coverage
-        COMMAND ${LCOV_PATH} --directory . --zerocounters
-        COMMAND $<TARGET_FILE:test>  # 运行测试
-        COMMAND ${LCOV_PATH} --directory . --capture --output-file coverage.info
-        COMMAND ${LCOV_PATH} --remove coverage.info '*/3rd/*' '*/test/*' '*/usr/' '*/13/*' -o filtered.info  # 过滤目录
-        COMMAND ${GENHTML_PATH} filtered.info --output-directory coverage_report
-        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-        COMMENT "Generating coverage report..."
-    )
-endif()
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fcoroutines")
@@ -85,10 +68,13 @@ add_executable(game_demo
     )
 target_link_libraries(game_demo PRIVATE cqy msgpack-cxx)
 
-add_executable(cqy_test test/test.cpp example/entity.cpp)
-target_link_libraries(cqy_test PRIVATE cqy)
+set(TEST_MAIN cqy_test)
+add_executable(${TEST_MAIN} test/test.cpp example/entity.cpp)
+target_link_libraries(${TEST_MAIN} PRIVATE cqy)
 
 enable_testing()
-add_test(NAME tests COMMAND cqy_test)
+add_test(NAME tests COMMAND ${TEST_MAIN})
+
+include(cmake/CodeCoverage.cmake)
 add_subdirectory(3rd/yalantinglibs)
 add_subdirectory(3rd/msgpack-c)
