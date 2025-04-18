@@ -76,7 +76,8 @@ function(setup_target_for_coverage _targetname _testrunner _outputname)
 		# Capturing lcov counters and generating report
 		COMMAND ${LCOV_PATH} --directory . --capture --output-file ${_outputname}.info
 
-        COMMAND ${LCOV_PATH} --remove ${_outputname}.info '*/tests/*' '/usr/*' '*/external/*' '*/3rd/*' '/Applications/*' --output-file ${_outputname}.info.cleaned
+        # COMMAND ${LCOV_PATH} --remove ${_outputname}.info '*/tests/*' '/usr/*' '*/external/*' '*/3rd/*' '/Applications/*' --output-file ${_outputname}.info.cleaned
+    COMMAND ${LCOV_PATH} --remove ${_outputname}.info '*/test/*' '/usr/*' '*/3rd/*' --output-file ${_outputname}.info.cleaned
 		COMMAND ${GENHTML_PATH} -o ${_outputname} ${_outputname}.info.cleaned
         COMMAND ${LCOV_PATH} --list ${_outputname}.info.cleaned
 		
@@ -114,7 +115,7 @@ if (cmake_build_type_tolower STREQUAL "coverage")
     endif() # NOT CMAKE_COMPILER_IS_GNUCXX
 
     SET(CMAKE_CXX_FLAGS_COVERAGE
-        "-g -O0 -fprofile-arcs -ftest-coverage"
+        "-g -O0 -fprofile-arcs -ftest-coverage -fprofile-update=atomic"
         CACHE STRING "Flags used by the C++ compiler during coverage builds."
         FORCE )
     SET(CMAKE_C_FLAGS_COVERAGE
