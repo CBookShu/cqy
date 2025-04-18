@@ -1,3 +1,4 @@
+#include <memory>
 #define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest.h>
 #include "cqy_handle.h"
@@ -623,6 +624,18 @@ TEST_CASE("entity_test") {
   auto& [a, b] = *e2.component<test_componet>();
   CHECK(a == 1);
   CHECK(b == "hello world");
+
+  auto e3 = mgr.create();
+  auto& [a1,b1] = *e3.add<test_componet>(1, "hello world");
+  CHECK(a1 == 1);
+  CHECK(b1 == "hello world");
+
+  auto& [a2,b2] = *e3.component<test_componet>();
+  CHECK(a2 == 1);
+  CHECK(b2 == "hello world");
+
+  CHECK(std::addressof(a1) == std::addressof(a2));
+  CHECK(std::addressof(b1) == std::addressof(b2));
 }
 
 TEST_CASE("finally_test") {
