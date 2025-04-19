@@ -292,7 +292,9 @@ uint32_t cqy_app::create_ctx(std::string_view name, std::string_view param) {
   }
   // begin receive msg
   s_->ctx_mgr.add_ctx(ctx);
-  ctx->wait_msg_spawn(ctx).via(coro_io::get_global_block_executor()).detach();
+  coro_io::get_global_executor()->schedule([this, ctx](){
+    ctx->wait_msg_spawn(ctx).start([](auto &&tr) {});
+  });
   return h;
 }
 

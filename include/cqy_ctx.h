@@ -2,6 +2,7 @@
 #include "cqy_app.h"
 #include "cqy_finally.h"
 #include "cqy_utils.h"
+#include "ylt/coro_io/io_context_pool.hpp"
 #include <memory>
 #include <string>
 #include <string_view>
@@ -55,7 +56,7 @@ public:
   template <typename... Args> auto unpack(std::string_view msg);
 
   cqy_app *get_app();
-  void async_call(Lazy<void> task);
+  void async_call(Lazy<void> task, coro_io::ExecutorWrapper<>* ex = coro_io::get_global_block_executor());
 
   template <typename T> Lazy<T> sync_call(Lazy<T> task);
 

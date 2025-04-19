@@ -2,6 +2,7 @@
 #include "cqy_app.h"
 #include "cqy_logger.h"
 #include "cqy_utils.h"
+#include "ylt/coro_io/io_context_pool.hpp"
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -22,9 +23,7 @@ cqy_node::~cqy_node() {
 }
 
 uint8_t cqy_node::self_nodeid() { return s_->self_nodeid; }
-bool cqy_node::check_self(uint8_t nodeid) {
-  return s_->self_nodeid == nodeid;
-}
+bool cqy_node::check_self(uint8_t nodeid) { return s_->self_nodeid == nodeid; }
 
 sptr<cqy_node::node_t> cqy_node::get_node(uint8_t nodeid) {
   for (auto &n : s_->nodes) {
@@ -36,7 +35,7 @@ sptr<cqy_node::node_t> cqy_node::get_node(uint8_t nodeid) {
 }
 
 sptr<cqy_node::node_t> cqy_node::get_node(std::string_view name) {
-  if(name.empty()) {
+  if (name.empty()) {
     return get_node(s_->self_nodeid);
   }
   for (auto &n : s_->nodes) {
@@ -50,29 +49,29 @@ sptr<cqy_node::node_t> cqy_node::get_node(std::string_view name) {
 void cqy_node::create_client(node_info &info) {
   sptr<node_t> node = std::make_shared<node_t>();
   node->info = info;
-  node->rpc_client = rpc_client_pool::create(
-      std::format("{}:{}", info.ip, info.port),
-      {.max_connection = std::thread::hardware_concurrency()});
+  node->rpc_client =
+      rpc_client_pool::create(std::format("{}:{}", info.ip, info.port));
   auto id = info.nodeid;
   s_->nodes.push_back(node);
 
-  node_mq_spawn(id).start([id,s = node->rpc_client](Try<void> tr) {
-    if (tr.hasError()) {
-      try {
-        throw tr.getException();
-      } catch (std::exception &e) {
-        CQY_ERROR("node:{} connect exception:{}", id, e.what());
+  coro_io::get_global_executor()->schedule([node, id, this]() {
+    node_mq_spawn(id).start([id](auto &&tr) {
+      if (tr.hasError()) {
+        try {
+          throw tr.getException();
+        } catch (std::exception &e) {
+          CQY_ERROR("node:{} connect exception:{}", id, e.what());
+        }
+      } else {
+        CQY_INFO("node:{} connect stop", id);
       }
-    } else {
-      CQY_INFO("node:{} connect stop", id);
-    }
+    });
   });
 }
 
-cqy_node::rpc_server& cqy_node::create_rpc_server(uint32_t thread, node_info& info) {
-  s_->server = std::make_unique<rpc_server>(
-    thread, info.port
-  );
+cqy_node::rpc_server &cqy_node::create_rpc_server(uint32_t thread,
+                                                  node_info &info) {
+  s_->server = std::make_unique<rpc_server>(thread, info.port);
   s_->self_nodeid = info.nodeid;
 
   sptr<node_t> node = std::make_shared<node_t>();
@@ -86,7 +85,7 @@ async_simple::Future<coro_rpc::err_code> cqy_node::rpc_server_start() {
 }
 
 void cqy_node::rpc_server_close() {
-  if(s_->server) {
+  if (s_->server) {
     s_->server->stop();
   }
 }

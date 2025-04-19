@@ -1,6 +1,7 @@
-#include <memory>
 #define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest.h>
+#include <memory>
+#include <ranges>
 #include "cqy_handle.h"
 #include "cqy_logger.h"
 #include "cqy_utils.h"
@@ -15,6 +16,7 @@
 #include "cqy_finally.h"
 
 int main(int argc, char** argv) { 
+  easylog::set_min_severity(easylog::Severity::WARN);
   return doctest::Context(argc, argv).run(); 
 }
 

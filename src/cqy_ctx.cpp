@@ -1,6 +1,7 @@
 #include "cqy_ctx.h"
 #include "cqy_app.h"
 #include "cqy_utils.h"
+#include "ylt/coro_io/io_context_pool.hpp"
 #include <exception>
 #include <cqy_msg.h>
 #include <utility>
@@ -80,9 +81,9 @@ void cqy_ctx::response(cqy_msg_t *msg, std::string_view data) {
   s_->app->node_mq_push(std::move(s));
 }
 
-void cqy_ctx::async_call(Lazy<void> task) {
+void cqy_ctx::async_call(Lazy<void> task, coro_io::ExecutorWrapper<>* ex) {
   coro_async_wrapper(std::move(task))
-    .via(coro_io::get_global_block_executor())
+    .via(ex)
     .start([s = shared_from_this()](auto&& t){
     });
 }
