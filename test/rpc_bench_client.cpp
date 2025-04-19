@@ -1,6 +1,7 @@
 #include "async_simple/coro/Lazy.h"
 #include "ylt/coro_io/io_context_pool.hpp"
 #include "ylt/easylog/record.hpp"
+#include <exception>
 #define DOCTEST_CONFIG_IMPLEMENT
 #include "cqy_logger.h"
 #include "cqy_utils.h"
@@ -40,22 +41,23 @@ struct bench_client : public cqy_ctx {
   Lazy<void> rpc_call(int idx, async_simple::coro::Latch& latch) {
     using namespace std::chrono_literals;
     for(;;) {
-      CQY_WARN("rpc call{} begin", idx);
+      // CQY_WARN("rpc call{} begin", idx);
       auto r = co_await ctx_call_name_nolock<param_t>("n2.bench_server", "rpc_test", param_t{"hello", 1});
-      CQY_WARN("rpc call{} end error:{}", idx, r.has_error());
+      // CQY_WARN("rpc call{} end error:{}", idx, r.has_error());
       if (r.has_error()) {
         co_await coro_io::sleep_for(0s);
         continue;
       }
-      CQY_WARN("rpc call{} close", idx);
+      // CQY_WARN("rpc call{} close", idx);
       auto p = r.as<param_t>();
       assert(p.s == "hello");
       assert(p.a == 1);
       break;
     }
     auto n = call_count.fetch_add(1, std::memory_order_release);
-    CQY_WARN("rpc call{} count_count:{}", idx, n + 1);
-    co_await latch.count_down();
+    // CQY_WARN("rpc call{} count_count:{}", idx, n + 1);
+    latch.count_down().via(coro_io::get_global_block_executor()).detach();
+    co_return;
   }
 
   Lazy<void> test_rpc1() {
@@ -64,7 +66,15 @@ struct bench_client : public cqy_ctx {
     async_simple::coro::Latch latch(count);
     for(auto idx: std::ranges::views::iota(0, count)) {
       coro_io::get_global_block_executor()->schedule([this,&latch,idx](){
-        rpc_call(idx, latch).start([](auto&&tr){});
+        rpc_call(idx, latch).start([idx](cqy::Try<void>&&tr){
+          if (tr.hasError()) {
+            try {
+              std::rethrow_exception(tr.getException());
+            } catch(std::exception& e) {
+              CQY_WARN("rpc call{} exception:{}", idx, e.what());
+            }
+          }
+        });
       });
     }
     co_await latch.wait();
@@ -78,7 +88,7 @@ struct bench_client : public cqy_ctx {
 int main(int argc, char** argv) { 
   easylog::set_min_severity(easylog::Severity::WARN);
   easylog::set_async(false);
-  easylog::init_log<1>(easylog::Severity::TRACE, "bench_client.log", false, true, 0, 0, true);
+  // easylog::init_log<1>(easylog::Severity::TRACE, "bench_client.log", false, true, 0, 0, true);
 
   cqy_app app;
   app.reg_ctx<bench_client>("bench_client");

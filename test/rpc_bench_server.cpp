@@ -30,7 +30,7 @@ struct bench_server : public cqy_ctx {
 
 int main(int argc, char** argv) {
   easylog::set_min_severity(easylog::Severity::WARN);
-  easylog::init_log<1>(easylog::Severity::TRACE, "bench_server.log", false, true, 0, 0, true);
+  // easylog::init_log<1>(easylog::Severity::TRACE, "bench_server.log", false, true, 0, 0, true);
 
   cqy_app app;
   app.reg_ctx<bench_server>("bench_server");
