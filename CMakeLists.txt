@@ -38,6 +38,7 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 else()
     add_compile_options("/wd4819")
     add_compile_options("/wd4267")
+    add_compile_options("/utf-8")
 endif()
 
 add_library(cqy STATIC 
