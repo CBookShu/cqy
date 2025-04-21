@@ -28,7 +28,7 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     # sudo apt update && sudo apt upgrade -y
     # sudo apt install openssl libssl-dev libssl-doc
     if (CMAKE_BUILD_TYPE STREQUAL "Release")
-        add_compile_options(-O3 -fno-tree-slp-vectorize)
+        add_compile_options(-O3 -g -fno-tree-slp-vectorize)
     else()
         add_compile_options(-fsanitize=address -g -fno-tree-slp-vectorize)
         link_libraries(asan)

@@ -1,12 +1,6 @@
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "cqy_logger.h"
 #include "cqy_utils.h"
-#include "ylt/coro_io/client_pool.hpp"
-#include "ylt/coro_io/coro_io.hpp"
 #include <atomic>
-#include <cstddef>
-#include <set>
-#include <doctest.h>
 #include <cqy.h>
 #include <ylt/thirdparty/async_simple/coro/Latch.h>
 #include "rpc_bench_def.h"

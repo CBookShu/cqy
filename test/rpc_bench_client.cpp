@@ -2,15 +2,10 @@
 #include "ylt/coro_io/io_context_pool.hpp"
 #include "ylt/easylog/record.hpp"
 #include <exception>
-#define DOCTEST_CONFIG_IMPLEMENT
 #include "cqy_logger.h"
 #include "cqy_utils.h"
-#include "ylt/coro_io/client_pool.hpp"
 #include "ylt/coro_io/coro_io.hpp"
 #include <atomic>
-#include <cstddef>
-#include <set>
-#include <doctest.h>
 #include <cqy.h>
 #include <ylt/thirdparty/async_simple/coro/Latch.h>
 #include "rpc_bench_def.h"
@@ -20,8 +15,7 @@ using namespace cqy;
 struct bench_client : public cqy_ctx {
   std::atomic_uint32_t call_count{0};
   virtual bool on_init(std::string_view param) override {
-    // async_call(test_rpc());
-    async_call(test_rpc1());
+    async_call(test());
     return true;
   }
   Lazy<void> test_rpc() {
@@ -29,8 +23,8 @@ struct bench_client : public cqy_ctx {
     for(auto _: std::ranges::views::iota(0, 10000)) {
       auto r = co_await ctx_call_name<param_t>("n2.bench_server", "rpc_test", param_t{"hello", 1});
       auto p = r.as<param_t>();
-      CHECK(p.s == "hello");
-      CHECK(p.a == 1);
+      assert(p.s == "hello");
+      assert(p.a == 1);
     }
     auto after = std::chrono::high_resolution_clock::now();
     auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(after - now).count();
@@ -87,6 +81,13 @@ struct bench_client : public cqy_ctx {
     auto after = std::chrono::high_resolution_clock::now();
     auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(after - now).count();
     CQY_WARN("rpc test: {}ms", diff);
+    co_return;
+  }
+
+  Lazy<void> test() {
+    co_await test_rpc();
+    co_await test_rpc1();
+    get_app()->stop();
     co_return;
   }
 };
