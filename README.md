@@ -11,7 +11,8 @@
 
 ## 示例
 
-具体示例，请参见 `ping` , `pong`, 还有 `test`
+- example: ping,pong,game_demo(TODO)
+- test: unit test, rpc bench
 
 ## 配置
 
@@ -31,9 +32,6 @@
 **注意**：协程函数一旦 `await` 让出当前操作，下一个消息或 RPC 可能会在 `await` 结束之前调用。
 
 ## TODO
-- add test
 - add script
-- add custom msg pack
 - support node config reload
-- support route name to node
 - rpc 原生支持msgpack;
