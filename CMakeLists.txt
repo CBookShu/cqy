@@ -77,10 +77,10 @@ add_executable(game_demo
     )
 target_link_libraries(game_demo PRIVATE cqy msgpack-cxx)
 
-add_executable(rpc_bench_client test/rpc_bench_client.cpp)
+add_executable(rpc_bench_client test/benchmark/rpc_bench_client.cpp)
 target_link_libraries(rpc_bench_client PRIVATE cqy)
 
-add_executable(rpc_bench_server test/rpc_bench_server.cpp)
+add_executable(rpc_bench_server test/benchmark/rpc_bench_server.cpp)
 target_link_libraries(rpc_bench_server PRIVATE cqy)
 
 set(TEST_MAIN cqy_test)
