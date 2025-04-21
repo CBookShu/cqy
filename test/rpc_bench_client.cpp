@@ -54,7 +54,7 @@ struct bench_client : public cqy_ctx {
       assert(p.a == 1);
       break;
     }
-    auto n = call_count.fetch_add(1, std::memory_order_release);
+    // auto n = call_count.fetch_add(1, std::memory_order_release);
     // CQY_WARN("rpc call{} count_count:{}", idx, n + 1);
     latch.count_down().via(coro_io::get_global_block_executor()).detach();
     co_return;
@@ -64,17 +64,23 @@ struct bench_client : public cqy_ctx {
     auto now = std::chrono::high_resolution_clock::now();
     int count = 10000;
     async_simple::coro::Latch latch(count);
+    auto f = [](bench_client* self, async_simple::coro::Latch& latch, int idx)
+    mutable
+    -> Lazy<void>
+    {
+      co_return co_await self->rpc_call(idx, latch);
+    };
     for(auto idx: std::ranges::views::iota(0, count)) {
-      coro_io::get_global_block_executor()->schedule([this,&latch,idx](){
-        rpc_call(idx, latch).start([idx](cqy::Try<void>&&tr){
-          if (tr.hasError()) {
-            try {
-              std::rethrow_exception(tr.getException());
-            } catch(std::exception& e) {
-              CQY_WARN("rpc call{} exception:{}", idx, e.what());
-            }
+      f(this, latch, idx)
+      .via(coro_io::get_global_block_executor())
+      .start([idx](cqy::Try<void>&&tr){
+        if (tr.hasError()) {
+          try {
+            std::rethrow_exception(tr.getException());
+          } catch(std::exception& e) {
+            CQY_WARN("rpc call{} exception:{}", idx, e.what());
           }
-        });
+        }
       });
     }
     co_await latch.wait();
